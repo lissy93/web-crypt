@@ -1,0 +1,68 @@
+name: web_crypt
+description: Encrypt and decrypt messages and files with age and OpenPGP. Offline, local-only.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.12.2
+
+dependencies:
+  cryptography: 2.9.0
+  # vendored forks, see packages/*/VENDOR.md
+  dage:
+    path: packages/dage
+  dart_pg:
+    path: packages/dart_pg
+  desktop_drop: 0.7.1
+  file_picker: 11.0.3
+  flutter:
+    sdk: flutter
+  flutter_riverpod: 3.4.2
+  flutter_secure_storage: 10.3.1
+  # web only, for the path url strategy so deep links work
+  flutter_web_plugins:
+    sdk: flutter
+  go_router: 17.4.0
+  shared_preferences: 2.5.5
+  web: 1.1.1
+
+dev_dependencies:
+  crypto: ^3.0.6
+  flutter_lints: 6.0.0
+  flutter_test:
+    sdk: flutter
+  integration_test:
+    sdk: flutter
+  mocktail: 1.0.5
+  path: ^1.9.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/fonts/Inter-LICENSE.txt
+    - assets/fonts/JetBrainsMono-LICENSE.txt
+  fonts:
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/Inter-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Inter-SemiBold.ttf
+          weight: 600
+    - family: JetBrainsMono
+      fonts:
+        - asset: assets/fonts/JetBrainsMono-Regular.ttf
+          weight: 400
+    # Flutter's web engine downloads Roboto from fonts.gstatic.com at startup
+    # unless a family by that name is already registered. pointing the name at
+    # Inter keeps the app offline and looks identical, since nothing asks for
+    # Roboto by name
+    - family: Roboto
+      fonts:
+        - asset: assets/fonts/Inter-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/Inter-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Inter-SemiBold.ttf
+          weight: 600

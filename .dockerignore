@@ -1,0 +1,18 @@
+.git/
+.github/
+.idea/
+.vscode/
+**/*.iml
+
+.dart_tool/
+build/
+coverage/
+tool/interop/node_modules/
+
+# nothing the web build reads
+linux/
+macos/
+windows/
+test/
+integration_test/
+alicia-notes/

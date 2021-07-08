@@ -1,0 +1,20 @@
+name: dart_pg
+description: >
+  Vendored fork of dart_pg 2.1.0 (Dart Privacy Guard), patched for web support.
+  See VENDOR.md.
+version: 2.1.0-webcrypt.1
+publish_to: none
+repository: https://github.com/web-of-trust/dart-pg
+
+environment:
+  sdk: ^3.4.4
+
+dependencies:
+  archive: ^4.0.9
+  pinenacl: ^0.6.0
+  pointycastle: ^4.0.0
+  sign_dart: ^1.0.0
+
+dev_dependencies:
+  lints: ^6.0.0
+  test: ^1.25.0

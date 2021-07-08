@@ -1,0 +1,235 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main, rebuild]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  FLUTTER_VERSION: 3.44.8
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze and format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Check the lockfile is committed and current
+        run: git diff --exit-code pubspec.lock
+      - run: dart format --output=none --set-exit-if-changed lib test tool integration_test
+      - run: flutter analyze --fatal-infos --fatal-warnings
+
+  test:
+    name: Unit, widget and vector tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter test --coverage --reporter expanded
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage
+          path: coverage/lcov.info
+
+  interop:
+    name: Interop against age and gpg
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Install the reference tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gnupg age
+          age --version
+          gpg --version | head -1
+      - run: flutter pub get
+      - name: Round trip every format and mode
+        run: ./tool/interop/run_interop.sh
+
+  web:
+    name: Web build, zero network, smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: flutter pub get
+      - run: flutter build web --release --no-web-resources-cdn
+      # authored sources only, since Flutter's own loader carries CDN
+      # constants that --no-web-resources-cdn switches off at runtime
+      - name: Fail if a CDN reference crept into an authored file
+        run: |
+          if grep -rlE "gstatic\.com|googleapis\.com|unpkg\.com|jsdelivr" web/; then
+            echo "a CDN URL is referenced from an authored file"
+            exit 1
+          fi
+          test -f build/web/canvaskit/canvaskit.wasm || {
+            echo "canvaskit was not bundled locally"
+            exit 1
+          }
+      - name: Install the headless checker
+        working-directory: tool/interop
+        run: |
+          npm ci
+          npx puppeteer browsers install firefox
+      - name: Assert zero external requests, Chromium
+        run: node tool/interop/check_no_network.mjs build/web
+      - name: Smoke the built app, Chromium
+        run: node tool/interop/smoke_web.mjs build/web
+      - name: Assert zero external requests, Firefox
+        env:
+          WEB_CRYPT_BROWSER: firefox
+        run: node tool/interop/check_no_network.mjs build/web
+      - name: Smoke the built app, Firefox
+        env:
+          WEB_CRYPT_BROWSER: firefox
+        run: node tool/interop/smoke_web.mjs build/web
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web
+          path: build/web
+
+  docker:
+    name: Docker image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      # no QEMU needed, the serve stage is COPY only
+      - name: Build for amd64 and arm64
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: false
+          load: false
+          tags: web-crypt:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Build amd64 locally and check it serves
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: web-crypt:smoke
+          cache-from: type=gha
+      - name: Run it and wait for the healthcheck
+        run: |
+          docker run -d --name web-crypt -p 8080:8080 web-crypt:smoke
+          for i in $(seq 1 30); do
+            state=$(docker inspect -f '{{.State.Health.Status}}' web-crypt 2>/dev/null || echo starting)
+            [ "$state" = "healthy" ] && break
+            sleep 2
+          done
+          docker inspect -f '{{.State.Health.Status}}' web-crypt | grep -q healthy
+          curl -fsS http://localhost:8080/health
+          curl -fsS http://localhost:8080/ | grep -q "web-crypt"
+          curl -fsS -o /dev/null -w '%{http_code}' http://localhost:8080/keys | grep -q 200
+          # every path, not just /, since nginx add_headers do not inherit
+          for path in / /index.html /flutter_service_worker.js /health; do
+            curl -fsSI "http://localhost:8080$path" | grep -qi "content-security-policy" \
+              || { echo "no CSP on $path"; exit 1; }
+            curl -fsSI "http://localhost:8080$path" | grep -qi "x-content-type-options: nosniff" \
+              || { echo "no nosniff on $path"; exit 1; }
+          done
+          echo "image size: $(docker image inspect web-crypt:smoke -f '{{.Size}}' | numfmt --to=iec)"
+      # against nginx, so the browser runs under the CSP the image sends
+      - name: Install the headless checker
+        working-directory: tool/interop
+        run: npm ci
+      - name: Drive the served app in a browser
+        env:
+          WEB_CRYPT_ORIGIN: http://127.0.0.1:8080
+        run: |
+          node tool/interop/check_no_network.mjs
+          node tool/interop/smoke_web.mjs
+      - name: Nothing 404ed while the browser used it
+        run: |
+          if docker logs web-crypt 2>&1 | grep ' 404 '; then
+            echo "the app asked for something the image does not contain"
+            exit 1
+          fi
+          curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/nope.txt | grep -q 404
+          docker rm -f web-crypt
+
+  desktop:
+    name: Desktop build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Linux build prerequisites
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config \
+            libgtk-3-dev liblzma-dev libstdc++-12-dev libsecret-1-dev
+      - run: flutter pub get
+      - name: Build Linux
+        if: runner.os == 'Linux'
+        run: flutter build linux --release
+      - name: Run the integration flows on a device
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get install -y xvfb
+          xvfb-run -a flutter test integration_test -d linux
+      - name: Build macOS
+        if: runner.os == 'macOS'
+        run: flutter build macos --release
+      - name: Build Windows
+        if: runner.os == 'Windows'
+        run: flutter build windows --release
+      - name: Check the Linux binary starts
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get install -y xvfb
+          timeout 30 xvfb-run -a ./build/linux/x64/release/bundle/web_crypt &
+          sleep 15
+          pgrep -f web_crypt >/dev/null && echo "the app is running"
+          pkill -f web_crypt || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.os }}
+          path: |
+            build/linux/x64/release/bundle
+            build/macos/Build/Products/Release
+            build/windows/x64/runner/Release
+          if-no-files-found: ignore

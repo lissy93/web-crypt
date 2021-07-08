@@ -1,0 +1,15 @@
+services:
+  web-crypt:
+    build: .
+    image: web-crypt:latest
+    container_name: web-crypt
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
