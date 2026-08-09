@@ -15,10 +15,10 @@ updates:
     labels: [dependencies, ci]
     commit-message:
       prefix: ci
-    # let a release sit for a bit before adopting it
+    # let a release sit for a bit before adopting it. actions are not semver
+    # to dependabot, so this ecosystem only takes the one figure
     cooldown:
       default-days: 7
-      semver-major-days: 14
 
   # minor and patch bumps ride together, majors come on their own so they get
   # read properly. the vendored forks are path deps, so there is nothing to bump
