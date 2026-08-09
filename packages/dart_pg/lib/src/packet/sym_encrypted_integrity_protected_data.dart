@@ -296,31 +296,30 @@ final class SymEncryptedIntegrityProtectedDataPacket extends BasePacket
     nonce.setAll(ivLength - 8, List.filled(8, 0));
 
     final processed = dataLength - tagLength * (dataLength / chunkSize).ceil();
-    final crypted = Uint8List(
-      processed + (forEncryption ? aead.tagLength : 0),
-    );
+    final crypted = BytesBuilder(copy: false);
     final cipher = aead.cipherEngine(kek, symmetric);
-    var chunkData = data;
-    for (var index = 0; index == 0 || chunkData.isNotEmpty;) {
+    var offset = 0;
+    for (var index = 0; index == 0 || offset < dataLength;) {
       // Take a chunk of `data`, en/decrypt it,
-      // and shift `data` to the next chunk.
-      final size = chunkSize < chunkData.length ? chunkSize : chunkData.length;
-      crypted.setAll(
-        index * size,
+      // and move on to the next chunk.
+      final remaining = dataLength - offset;
+      final size = chunkSize < remaining ? chunkSize : remaining;
+      final chunk = data.sublist(offset, offset + size);
+      crypted.add(
         forEncryption
             ? cipher.encrypt(
-                chunkData.sublist(0, size),
+                chunk,
                 nonce,
                 aData,
               )
             : cipher.decrypt(
-                chunkData.sublist(0, size),
+                chunk,
                 nonce,
                 aData,
               ),
       );
 
-      chunkData = chunkData.sublist(size);
+      offset += size;
       nonce.setAll(ivLength - 4, (++index).pack32());
     }
 
@@ -341,6 +340,7 @@ final class SymEncryptedIntegrityProtectedDataPacket extends BasePacket
             nonce,
             aDataTag,
           );
-    return Uint8List.fromList([...crypted, ...finalCrypted]);
+    crypted.add(finalCrypted);
+    return crypted.toBytes();
   }
 }

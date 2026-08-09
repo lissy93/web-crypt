@@ -171,31 +171,30 @@ final class AeadEncryptedDataPacket extends BasePacket
     );
 
     final processed = dataLength - tagLength * (dataLength / chunkSize).ceil();
-    final crypted = Uint8List(
-      processed + (forEncryption ? aead.tagLength : 0),
-    );
-    var chunkData = data;
-    for (var index = 0; index == 0 || chunkData.isNotEmpty;) {
+    final crypted = BytesBuilder(copy: false);
+    var offset = 0;
+    for (var index = 0; index == 0 || offset < dataLength;) {
       /// We take a chunk of data, en/decrypt it,
-      /// and shift `data` to the next chunk.
+      /// and move on to the next chunk.
       final chunkIndexData = adataBuffer.sublist(5, 13);
-      final size = chunkSize < chunkData.length ? chunkSize : chunkData.length;
-      crypted.setAll(
-        index * size,
+      final remaining = dataLength - offset;
+      final size = chunkSize < remaining ? chunkSize : remaining;
+      final chunk = data.sublist(offset, offset + size);
+      crypted.add(
         forEncryption
             ? cipher.encrypt(
-                chunkData.sublist(0, size),
+                chunk,
                 cipher.getNonce(iv ?? Uint8List(aead.ivLength), chunkIndexData),
                 adataBuffer,
               )
             : cipher.decrypt(
-                chunkData.sublist(0, size),
+                chunk,
                 cipher.getNonce(iv ?? Uint8List(aead.ivLength), chunkIndexData),
                 adataBuffer,
               ),
       );
 
-      chunkData = chunkData.sublist(size);
+      offset += size;
       adataBuffer.setAll(9, (++index).pack32());
     }
 
@@ -227,6 +226,7 @@ final class AeadEncryptedDataPacket extends BasePacket
             adataTagBuffer,
           );
 
-    return Uint8List.fromList([...crypted, ...finalCrypted]);
+    crypted.add(finalCrypted);
+    return crypted.toBytes();
   }
 }

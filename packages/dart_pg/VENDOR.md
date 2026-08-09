@@ -28,6 +28,10 @@ cryptographic primitive is modified.
   as an invalid marker packet
 - `cryptor/symmetric/buffered_cipher.dart` runs each block through a one-block
   scratch buffer, turning quadratic CFB into linear
+- `packet/aead_encrypted_data.dart` and the AEAD half of
+  `sym_encrypted_integrity_protected_data.dart` track the output offset per
+  chunk, which is what a message past one chunk needs, and gpg 2.4 writes those
+  to any key advertising AEAD
 - `packet/base_packet.dart` writes definite lengths for the data packets, and
   throws past 4 GiB instead of wrapping; it, `packet_list.dart`,
   `literal_data.dart` and `sym_encrypted_integrity_protected_data.dart` build

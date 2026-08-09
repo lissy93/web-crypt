@@ -1,0 +1,39 @@
+version: 2
+
+updates:
+  # actions are pinned to commit SHAs, so this is what keeps them current.
+  # all of them ride in one PR a week, there is nothing to read one at a time
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 1
+    groups:
+      actions:
+        patterns: ['*']
+    labels: [dependencies, ci]
+    commit-message:
+      prefix: ci
+    # let a release sit for a bit before adopting it
+    cooldown:
+      default-days: 7
+      semver-major-days: 14
+
+  # minor and patch bumps ride together, majors come on their own so they get
+  # read properly. the vendored forks are path deps, so there is nothing to bump
+  - package-ecosystem: pub
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      dart:
+        patterns: ['*']
+        update-types: [minor, patch]
+    commit-message:
+      prefix: deps
+    cooldown:
+      default-days: 7
+      semver-major-days: 14

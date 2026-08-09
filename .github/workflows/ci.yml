@@ -1,4 +1,5 @@
-name: CI
+# CI checks for pushes to the main branches, PRs, and manual runs
+name: 🚦 CI
 
 on:
   push:
@@ -6,226 +7,444 @@ on:
   pull_request:
   workflow_dispatch:
 
-env:
-  FLUTTER_VERSION: 3.44.8
+permissions:
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-jobs:
-  analyze:
-    name: Analyze and format
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: subosito/flutter-action@v2
-        with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-          channel: stable
-          cache: true
-      - run: flutter pub get
-      - name: Check the lockfile is committed and current
-        run: git diff --exit-code pubspec.lock
-      - run: dart format --output=none --set-exit-if-changed lib test tool integration_test
-      - run: flutter analyze --fatal-infos --fatal-warnings
+env:
+  FLUTTER_VERSION: 3.44.8
 
-  test:
-    name: Unit, widget and vector tests
+jobs:
+  # Work out which checks are worth running
+  changes:
+    name: 🔍 Detect changes
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read # paths-filter reads a PR's changed files through the API
+    outputs:
+      dart: ${{ steps.filter.outputs.dart }}
+      web: ${{ steps.filter.outputs.web }}
+      docker: ${{ steps.filter.outputs.docker }}
+      desktop: ${{ steps.filter.outputs.desktop }}
+      workflows: ${{ steps.filter.outputs.workflows }}
+      deps: ${{ steps.filter.outputs.deps }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: subosito/flutter-action@v2
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Filter changed paths
+        id: filter
+        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4
+        with:
+          filters: |
+            dart: &dart
+              - 'lib/**'
+              - 'test/**'
+              - 'integration_test/**'
+              - 'tool/**'
+              - 'packages/**'
+              - 'assets/**'
+              - 'pubspec.yaml'
+              - 'pubspec.lock'
+              - 'analysis_options.yaml'
+            web:
+              - *dart
+              - 'web/**'
+            docker:
+              - *dart
+              - 'web/**'
+              - 'Dockerfile'
+              - '.dockerignore'
+              - 'docker/**'
+            desktop:
+              - *dart
+              - 'linux/**'
+              - 'macos/**'
+              - 'windows/**'
+            workflows:
+              - '.github/workflows/**'
+            deps:
+              - 'pubspec.yaml'
+              - 'pubspec.lock'
+
+  # Everything is formatted (packages/ is left out on purpose)
+  format:
+    name: 🎨 Format
+    needs: changes
+    if: needs.changes.outputs.dart == 'true' || github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
-      - run: flutter pub get
-      - run: flutter test --coverage --reporter expanded
-      - uses: actions/upload-artifact@v4
+
+      - name: Check formatting
+        run: dart format --output=none --set-exit-if-changed lib test tool integration_test
+
+  # No analyzer complaints, and the lockfile committed matches the pubspec
+  analyze:
+    name: 🔬 Analyze
+    needs: changes
+    if: needs.changes.outputs.dart == 'true' || github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Check the lockfile is committed and current
+        run: |
+          git diff --exit-code pubspec.lock \
+            || { echo "::error::pubspec.lock is stale, commit the updated one"; exit 1; }
+
+      - name: Run analyzer
+        run: flutter analyze --fatal-infos --fatal-warnings
+
+  # Unit, widget and vector tests
+  test:
+    name: 🧪 Test
+    needs: changes
+    if: needs.changes.outputs.dart == 'true' || github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Run tests
+        run: flutter test --coverage --reporter expanded
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: coverage
           path: coverage/lcov.info
 
-  interop:
-    name: Interop against age and gpg
+  # The real screens, driven on a Linux device
+  integration:
+    name: 🎬 Integration
+    needs: changes
+    if: needs.changes.outputs.dart == 'true' || github.event_name != 'pull_request'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: subosito/flutter-action@v2
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
+
+      - name: Install build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config \
+            libgtk-3-dev liblzma-dev libstdc++-12-dev libsecret-1-dev xvfb
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Run the integration flows
+        run: xvfb-run -a flutter test integration_test -d linux
+
+  # Round trips every format and mode against the reference tools
+  interop:
+    name: 🤝 Interop
+    needs: changes
+    if: needs.changes.outputs.dart == 'true' || github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
       - name: Install the reference tools
         run: |
           sudo apt-get update
           sudo apt-get install -y gnupg age
           age --version
           gpg --version | head -1
-      - run: flutter pub get
-      - name: Round trip every format and mode
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Round trip against age and gpg
         run: ./tool/interop/run_interop.sh
 
+  # Builds for web, and proves the built app asks the network for nothing
   web:
-    name: Web build, zero network, smoke
+    name: 🌐 Web
+    needs: changes
+    if: needs.changes.outputs.web == 'true' || github.event_name != 'pull_request'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: subosito/flutter-action@v2
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
-      - uses: actions/setup-node@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 22
-      - run: flutter pub get
-      - run: flutter build web --release --no-web-resources-cdn
+          cache: npm
+          cache-dependency-path: tool/interop/package-lock.json
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build for web
+        run: flutter build web --release --no-web-resources-cdn
+
       # authored sources only, since Flutter's own loader carries CDN
       # constants that --no-web-resources-cdn switches off at runtime
       - name: Fail if a CDN reference crept into an authored file
         run: |
           if grep -rlE "gstatic\.com|googleapis\.com|unpkg\.com|jsdelivr" web/; then
-            echo "a CDN URL is referenced from an authored file"
+            echo "::error::a CDN URL is referenced from an authored file"
             exit 1
           fi
-          test -f build/web/canvaskit/canvaskit.wasm || {
-            echo "canvaskit was not bundled locally"
-            exit 1
-          }
+          test -f build/web/canvaskit/canvaskit.wasm \
+            || { echo "::error::canvaskit was not bundled locally"; exit 1; }
+
       - name: Install the headless checker
         working-directory: tool/interop
         run: |
           npm ci
           npx puppeteer browsers install firefox
+
       - name: Assert zero external requests, Chromium
         run: node tool/interop/check_no_network.mjs build/web
+
       - name: Smoke the built app, Chromium
         run: node tool/interop/smoke_web.mjs build/web
+
       - name: Assert zero external requests, Firefox
         env:
           WEB_CRYPT_BROWSER: firefox
         run: node tool/interop/check_no_network.mjs build/web
+
       - name: Smoke the built app, Firefox
         env:
           WEB_CRYPT_BROWSER: firefox
         run: node tool/interop/smoke_web.mjs build/web
-      - uses: actions/upload-artifact@v4
+
+      - name: Upload the built site
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: web
           path: build/web
 
+  # The image builds for both arches, serves, and sends the headers it should
   docker:
-    name: Docker image
+    name: 🐳 Docker
+    needs: changes
+    if: needs.changes.outputs.docker == 'true' || github.event_name != 'pull_request'
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
       # no QEMU needed, the serve stage is COPY only
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+
       - name: Build for amd64 and arm64
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
           context: .
           platforms: linux/amd64,linux/arm64
           push: false
           load: false
           tags: web-crypt:ci
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-      - name: Build amd64 locally and check it serves
-        uses: docker/build-push-action@v6
+          cache-from: type=gha,scope=ci-docker
+          cache-to: type=gha,mode=max,scope=ci-docker
+
+      - name: Build amd64 locally so it can be run
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
           context: .
           platforms: linux/amd64
           push: false
           load: true
           tags: web-crypt:smoke
-          cache-from: type=gha
+          cache-from: type=gha,scope=ci-docker
+
       - name: Run it and wait for the healthcheck
         run: |
+          set -euo pipefail
           docker run -d --name web-crypt -p 8080:8080 web-crypt:smoke
-          for i in $(seq 1 30); do
+          for _ in $(seq 1 30); do
             state=$(docker inspect -f '{{.State.Health.Status}}' web-crypt 2>/dev/null || echo starting)
-            [ "$state" = "healthy" ] && break
+            if [ "$state" = "healthy" ]; then
+              break
+            fi
             sleep 2
           done
           docker inspect -f '{{.State.Health.Status}}' web-crypt | grep -q healthy
           curl -fsS http://localhost:8080/health
           curl -fsS http://localhost:8080/ | grep -q "web-crypt"
           curl -fsS -o /dev/null -w '%{http_code}' http://localhost:8080/keys | grep -q 200
-          # every path, not just /, since nginx add_headers do not inherit
+
+      # every path, not just /, since nginx add_header does not inherit
+      - name: Check the security headers on every path
+        run: |
+          set -euo pipefail
           for path in / /index.html /flutter_service_worker.js /health; do
             curl -fsSI "http://localhost:8080$path" | grep -qi "content-security-policy" \
-              || { echo "no CSP on $path"; exit 1; }
+              || { echo "::error::no CSP on $path"; exit 1; }
             curl -fsSI "http://localhost:8080$path" | grep -qi "x-content-type-options: nosniff" \
-              || { echo "no nosniff on $path"; exit 1; }
+              || { echo "::error::no nosniff on $path"; exit 1; }
           done
           echo "image size: $(docker image inspect web-crypt:smoke -f '{{.Size}}' | numfmt --to=iec)"
-      # against nginx, so the browser runs under the CSP the image sends
+
       - name: Install the headless checker
         working-directory: tool/interop
         run: npm ci
+
+      # against nginx, so the browser runs under the CSP the image sends
       - name: Drive the served app in a browser
         env:
           WEB_CRYPT_ORIGIN: http://127.0.0.1:8080
         run: |
           node tool/interop/check_no_network.mjs
           node tool/interop/smoke_web.mjs
+
       - name: Nothing 404ed while the browser used it
         run: |
+          set -euo pipefail
           if docker logs web-crypt 2>&1 | grep ' 404 '; then
-            echo "the app asked for something the image does not contain"
+            echo "::error::the app asked for something the image does not contain"
             exit 1
           fi
           curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/nope.txt | grep -q 404
-          docker rm -f web-crypt
 
+      - name: Stop the container
+        if: always()
+        run: docker rm -f web-crypt || true
+
+  # Release builds for every desktop target the app ships on
   desktop:
-    name: Desktop build (${{ matrix.os }})
+    name: 🖥️ Desktop (${{ matrix.os }})
+    needs: changes
+    if: needs.changes.outputs.desktop == 'true' || github.event_name != 'pull_request'
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
-      - uses: actions/checkout@v4
-      - uses: subosito/flutter-action@v2
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
+
       - name: Linux build prerequisites
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y clang cmake ninja-build pkg-config \
-            libgtk-3-dev liblzma-dev libstdc++-12-dev libsecret-1-dev
-      - run: flutter pub get
+            libgtk-3-dev liblzma-dev libstdc++-12-dev libsecret-1-dev xvfb
+
+      - name: Install dependencies
+        run: flutter pub get
+
       - name: Build Linux
         if: runner.os == 'Linux'
         run: flutter build linux --release
-      - name: Run the integration flows on a device
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get install -y xvfb
-          xvfb-run -a flutter test integration_test -d linux
+
       - name: Build macOS
         if: runner.os == 'macOS'
         run: flutter build macos --release
+
       - name: Build Windows
         if: runner.os == 'Windows'
         run: flutter build windows --release
+
       - name: Check the Linux binary starts
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get install -y xvfb
           timeout 30 xvfb-run -a ./build/linux/x64/release/bundle/web_crypt &
           sleep 15
-          pgrep -f web_crypt >/dev/null && echo "the app is running"
+          pgrep -f web_crypt >/dev/null || { echo "::error::the app did not start"; exit 1; }
           pkill -f web_crypt || true
-      - uses: actions/upload-artifact@v4
+
+      - name: Upload the build
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: desktop-${{ matrix.os }}
           path: |
@@ -233,3 +452,140 @@ jobs:
             build/macos/Build/Products/Release
             build/windows/x64/runner/Release
           if-no-files-found: ignore
+
+  # New or changed dependencies carry no known vulnerabilities
+  dependencies:
+    name: ⛓️ Dependencies
+    needs: changes
+    if: github.event_name == 'pull_request' && needs.changes.outputs.deps == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Review dependencies
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: moderate
+          show-openssf-scorecard: false
+
+  # Nothing secret has been committed
+  secrets:
+    name: 🔑 Secrets
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Scan for secrets
+        uses: trufflesecurity/trufflehog@6f3c981e7b77f235fd2702dd74af25fc4b72bf11 # v3.96.0
+        with:
+          base: ${{ github.event.pull_request.base.sha }}
+          head: ${{ github.event.pull_request.head.sha }}
+          extra_args: --only-verified
+
+  # The workflows themselves are valid and not a security hole
+  workflows:
+    name: ⚙️ Workflows
+    needs: changes
+    if: needs.changes.outputs.workflows == 'true' || github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run actionlint
+        uses: raven-actions/actionlint@3d39aea434753780c3b3d4a1a31c854b4dbf49d7 # v2
+        with:
+          fail-on-error: true
+
+      - name: Run zizmor
+        uses: zizmorcore/zizmor-action@3dc1ecc9bcb9e94e9b2c709687979e1298497054 # v0.6.2
+        with:
+          inputs: .github/workflows/
+          advanced-security: false
+          annotations: true
+
+  # make pretty summary, for absolutly no reason at all, except i want it
+  summary:
+    name: 📋 Summary
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: always()
+    needs:
+      - changes
+      - format
+      - analyze
+      - test
+      - integration
+      - interop
+      - web
+      - docker
+      - desktop
+      - dependencies
+      - secrets
+      - workflows
+    steps:
+      - name: Render the summary and gate on it
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          set -euo pipefail
+          label() {
+            case "$1" in
+              changes) echo "🔍 Detect changes" ;;
+              format) echo "🎨 Format" ;;
+              analyze) echo "🔬 Analyze" ;;
+              test) echo "🧪 Test" ;;
+              integration) echo "🎬 Integration" ;;
+              interop) echo "🤝 Interop" ;;
+              web) echo "🌐 Web" ;;
+              docker) echo "🐳 Docker" ;;
+              desktop) echo "🖥️ Desktop" ;;
+              dependencies) echo "⛓️ Dependencies" ;;
+              secrets) echo "🔑 Secrets" ;;
+              workflows) echo "⚙️ Workflows" ;;
+              *) echo "$1" ;;
+            esac
+          }
+          status() {
+            case "$1" in
+              success) echo "✅ Passed" ;;
+              skipped) echo "⏭️ Skipped" ;;
+              cancelled) echo "🚫 Cancelled" ;;
+              failure) echo "❌ Failed" ;;
+              *) echo "❔ $1" ;;
+            esac
+          }
+          {
+            echo "## CI Summary"
+            echo ""
+            echo "| Check | Status |"
+            echo "|-------|--------|"
+          } >> "$GITHUB_STEP_SUMMARY"
+          failed=0
+          for job in $(echo "$NEEDS" | jq -r 'keys[]'); do
+            result=$(echo "$NEEDS" | jq -r --arg j "$job" '.[$j].result')
+            echo "| $(label "$job") | $(status "$result") |" >> "$GITHUB_STEP_SUMMARY"
+            case "$result" in
+              failure|cancelled) failed=1 ;;
+            esac
+          done
+          if [ "$failed" -ne 0 ]; then
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "One or more checks did not pass." >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::one or more checks did not pass"
+            exit 1
+          fi
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Everything that ran passed." >> "$GITHUB_STEP_SUMMARY"
