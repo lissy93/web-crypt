@@ -34,8 +34,10 @@ RUN flutter build web --release --no-web-resources-cdn \
   && rm -rf build/web/canvaskit/skwasm* build/web/canvaskit/wimp* \
             build/web/canvaskit/experimental_webparagraph
 
-# COPY only, so buildx can assemble any architecture without emulating a RUN
-FROM nginx:1.31-alpine AS serve
+# COPY only, so buildx can assemble any architecture without emulating a RUN.
+# slim, since the full variant only adds modules this never loads, plus curl,
+# and that extra is where the image scan was finding CVEs
+FROM nginx:1.31-alpine-slim AS serve
 
 COPY docker/nginx.conf docker/security-headers.conf /etc/nginx/
 COPY --from=build /src/build/web /srv/web-crypt
