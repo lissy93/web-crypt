@@ -35,7 +35,7 @@ RUN flutter build web --release --no-web-resources-cdn \
             build/web/canvaskit/experimental_webparagraph
 
 # COPY only, so buildx can assemble any architecture without emulating a RUN
-FROM nginx:1.27-alpine AS serve
+FROM nginx:1.31-alpine AS serve
 
 COPY docker/nginx.conf docker/security-headers.conf /etc/nginx/
 COPY --from=build /src/build/web /srv/web-crypt

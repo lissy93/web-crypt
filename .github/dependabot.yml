@@ -20,6 +20,19 @@ updates:
     cooldown:
       default-days: 7
 
+  # keeps the nginx base current. a stale base is how CVEs pile up, and the
+  # bump arrives as its own PR that the image scan can actually be run against
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    labels: [dependencies, docker]
+    commit-message:
+      prefix: docker
+    cooldown:
+      default-days: 7
+
   # minor and patch bumps ride together, majors come on their own so they get
   # read properly. the vendored forks are path deps, so there is nothing to bump
   - package-ecosystem: pub

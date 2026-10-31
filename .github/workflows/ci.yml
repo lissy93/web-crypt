@@ -1,9 +1,11 @@
-# CI checks for pushes to the main branches, PRs, and manual runs
+# CI checks for PRs, pushes to the trunk, and manual runs
 name: 🚦 CI
 
 on:
+  # trunk only. a branch with a PR open is already covered by pull_request,
+  # and listing it here would run everything twice for the same commit
   push:
-    branches: [master, main, rebuild]
+    branches: [master, main]
   pull_request:
   workflow_dispatch:
 
@@ -31,6 +33,7 @@ jobs:
       web: ${{ steps.filter.outputs.web }}
       docker: ${{ steps.filter.outputs.docker }}
       desktop: ${{ steps.filter.outputs.desktop }}
+      image: ${{ steps.filter.outputs.image }}
       workflows: ${{ steps.filter.outputs.workflows }}
       deps: ${{ steps.filter.outputs.deps }}
     steps:
@@ -66,6 +69,10 @@ jobs:
               - 'linux/**'
               - 'macos/**'
               - 'windows/**'
+            image:
+              - 'Dockerfile'
+              - '.dockerignore'
+              - 'docker/**'
             workflows:
               - '.github/workflows/**'
             deps:
@@ -149,8 +156,12 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      # shuffled, so nothing quietly depends on the test before it, but on a
+      # fixed seed so the order is the same for everyone and a failure repeats
       - name: Run tests
-        run: flutter test --coverage --reporter expanded
+        run: >-
+          flutter test --coverage --reporter expanded
+          --test-randomize-ordering-seed 20260809
 
       - name: Upload coverage
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -268,6 +279,22 @@ jobs:
           test -f build/web/canvaskit/canvaskit.wasm \
             || { echo "::error::canvaskit was not bundled locally"; exit 1; }
 
+      # the app code, which is what grows when a dependency is added. canvaskit
+      # is a fixed cost from Flutter, so it is not counted here
+      - name: Check the bundle has not grown
+        env:
+          BUDGET_KIB: 1200
+        run: |
+          set -euo pipefail
+          kib=$(( $(gzip -9 -c build/web/main.dart.js | wc -c) / 1024 ))
+          echo "main.dart.js: ${kib} KiB gzipped, budget ${BUDGET_KIB} KiB" \
+            >> "$GITHUB_STEP_SUMMARY"
+          if [ "$kib" -gt "$BUDGET_KIB" ]; then
+            echo "::error::main.dart.js is ${kib} KiB gzipped, over the ${BUDGET_KIB} KiB budget"
+            exit 1
+          fi
+          echo "main.dart.js: ${kib} KiB gzipped, budget ${BUDGET_KIB} KiB"
+
       - name: Install the headless checker
         working-directory: tool/interop
         run: |
@@ -334,6 +361,20 @@ jobs:
           tags: web-crypt:smoke
           cache-from: type=gha,scope=ci-docker
 
+      # only when the image itself changed. the CVE database moves on its own,
+      # so running this against an unrelated diff would fail for reasons the
+      # author cannot act on. unfixed ones are left out for the same reason
+      - name: Scan the image for known vulnerabilities
+        if: needs.changes.outputs.image == 'true' || github.event_name != 'pull_request'
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: web-crypt:smoke
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: 1
+          format: table
+
       - name: Run it and wait for the healthcheck
         run: |
           set -euo pipefail
@@ -354,11 +395,11 @@ jobs:
       - name: Check the security headers on every path
         run: |
           set -euo pipefail
-          for path in / /index.html /flutter_service_worker.js /health; do
-            curl -fsSI "http://localhost:8080$path" | grep -qi "content-security-policy" \
-              || { echo "::error::no CSP on $path"; exit 1; }
-            curl -fsSI "http://localhost:8080$path" | grep -qi "x-content-type-options: nosniff" \
-              || { echo "::error::no nosniff on $path"; exit 1; }
+          for route in / /index.html /flutter_service_worker.js /health; do
+            curl -fsSI "http://localhost:8080$route" | grep -qi "content-security-policy" \
+              || { echo "::error::no CSP on $route"; exit 1; }
+            curl -fsSI "http://localhost:8080$route" | grep -qi "x-content-type-options: nosniff" \
+              || { echo "::error::no nosniff on $route"; exit 1; }
           done
           echo "image size: $(docker image inspect web-crypt:smoke -f '{{.Size}}' | numfmt --to=iec)"
 
@@ -451,11 +492,16 @@ jobs:
             build/windows/x64/runner/Release
           if-no-files-found: ignore
 
-  # New or changed dependencies carry no known vulnerabilities
+  # New or changed dependencies carry no known vulnerabilities. needs the
+  # dependency graph, which a private repo only gets with Advanced Security,
+  # so this sits out until the repo is public
   dependencies:
     name: ⛓️ Dependencies
     needs: changes
-    if: github.event_name == 'pull_request' && needs.changes.outputs.deps == 'true'
+    if: >-
+      github.event_name == 'pull_request'
+      && needs.changes.outputs.deps == 'true'
+      && github.event.repository.private == false
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -469,6 +515,30 @@ jobs:
         with:
           fail-on-severity: moderate
           show-openssf-scorecard: false
+
+  # Known advisories against everything the lockfile resolves, path deps and
+  # their transitives included. only when the lockfile moved, since the OSV
+  # database updates on its own and an unrelated diff cannot answer for it.
+  # dependabot's weekly pubspec PR is what brings newly published ones in
+  vulnerabilities:
+    name: 🛡️ Vulnerabilities
+    needs: changes
+    if: needs.changes.outputs.deps == 'true' || github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # the CLI image rather than the reusable workflow, which reports through
+      # code scanning, and a private repo only gets that with Advanced Security
+      - name: Scan pubspec.lock against the OSV database
+        run: |
+          docker run --rm -v "$PWD:/src:ro" \
+            ghcr.io/google/osv-scanner:v2.5.0 \
+            scan source --lockfile=/src/pubspec.lock
 
   # Nothing secret has been committed
   secrets:
@@ -502,15 +572,20 @@ jobs:
         with:
           persist-credentials: false
 
+      # both tools are pinned. left on latest, a new release adding a rule
+      # turns an unrelated PR red, which is not the author's to fix
       - name: Run actionlint
         uses: raven-actions/actionlint@3d39aea434753780c3b3d4a1a31c854b4dbf49d7 # v2
         with:
+          version: 1.7.12
           fail-on-error: true
 
       - name: Run zizmor
         uses: zizmorcore/zizmor-action@3dc1ecc9bcb9e94e9b2c709687979e1298497054 # v0.6.2
         with:
-          inputs: .github/workflows/
+          version: 1.25.2
+          inputs: .github/
+          online-audits: false
           advanced-security: false
           annotations: true
 
@@ -531,6 +606,7 @@ jobs:
       - docker
       - desktop
       - dependencies
+      - vulnerabilities
       - secrets
       - workflows
     steps:
@@ -551,6 +627,7 @@ jobs:
               docker) echo "🐳 Docker" ;;
               desktop) echo "🖥️ Desktop" ;;
               dependencies) echo "⛓️ Dependencies" ;;
+              vulnerabilities) echo "🛡️ Vulnerabilities" ;;
               secrets) echo "🔑 Secrets" ;;
               workflows) echo "⚙️ Workflows" ;;
               *) echo "$1" ;;
