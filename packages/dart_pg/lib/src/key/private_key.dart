@@ -192,7 +192,7 @@ final class PrivateKey extends BaseKey implements PrivateKeyInterface {
 
   @override
   getDecryptionKeyPacket([Uint8List? keyID]) =>
-      getEncryptionKeyPacket(keyID) as SecretKeyPacketInterface;
+      getEncryptionKeyPacket(keyID) as SecretKeyPacketInterface?;
 
   @override
   armor() => Armor.encode(ArmorType.privateKey, packetList.encode());

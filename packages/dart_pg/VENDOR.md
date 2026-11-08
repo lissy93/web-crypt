@@ -19,6 +19,9 @@ cryptographic primitive is modified.
 - `secret_key.dart`, `secret_subkey.dart` and `key/private_key.dart` gain
   `unprotect()`, so a key generated without a passphrase writes out unlocked
   rather than sealed under a throwaway nobody can supply
+- `key/private_key.dart` lets `getDecryptionKeyPacket` return null as its
+  interface says, rather than throwing a cast error for a key with no
+  encryption subkey
 - the eddsa legacy and ecdh key materials and `common/extensions.dart` pad
   fixed-width values back to 32 bytes, which MPI storage truncates, and
   `verify` locates the second half of a signature by its stored length

@@ -197,6 +197,25 @@ void main() {
       }
     });
 
+    test('a sign-only key held alongside does not get in the way', () async {
+      // gpg --quick-gen-key ... ed25519 sign, so no encryption subkey at all
+      final signOnly = Identity(
+        format: CryptoFormatKind.pgp,
+        material: File(
+          'test/fixtures/pgp-sign-only-private.asc',
+        ).readAsStringSync(),
+      );
+      final sealed = await encrypt(
+        Uint8List.fromList(utf8.encode('for alice')),
+        EncryptOptions.forRecipients([recipientOf(alice)]),
+      );
+      final opened = await decrypt(
+        sealed,
+        DecryptOptions(identities: [signOnly, identityOf(alice)]),
+      );
+      expect(utf8.decode(opened), 'for alice');
+    });
+
     test('a stranger cannot open it', () async {
       final sealed = await encrypt(
         Uint8List.fromList(utf8.encode('private')),
