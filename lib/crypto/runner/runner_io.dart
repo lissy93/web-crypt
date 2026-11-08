@@ -16,21 +16,23 @@ Future<CryptoJobResult> runCryptoJob(
   CryptoJob job, {
   void Function(int processed)? onProgress,
 }) async {
-  if (onProgress == null) {
-    return Isolate.run(() => _execute(job), debugName: 'crypto');
-  }
+  if (onProgress == null) return _spawn(job);
   final port = ReceivePort();
   final subscription = port.listen((message) {
     if (message is int) onProgress(message);
   });
-  final send = port.sendPort;
   try {
-    return await Isolate.run(() => _execute(job, send), debugName: 'crypto');
+    return await _spawn(job, port.sendPort);
   } finally {
     await subscription.cancel();
     port.close();
   }
 }
+
+/// closures in one function share a context, so spawning from
+/// [runCryptoJob] would copy onProgress, and whatever it holds, across too
+Future<CryptoJobResult> _spawn(CryptoJob job, [SendPort? progress]) =>
+    Isolate.run(() => _execute(job, progress), debugName: 'crypto');
 
 Future<CryptoJobResult> _execute(CryptoJob job, [SendPort? progress]) async {
   return switch (job) {

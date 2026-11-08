@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -59,6 +60,25 @@ void main() {
 
     expect(decryptProgress, isNotEmpty);
     expect(File(back).readAsBytesSync(), source.readAsBytesSync());
+  });
+
+  // the controllers report from a closure over a notifier, which an isolate
+  // cannot copy. a closure over a future cannot be copied either
+  test('progress can come from a closure an isolate cannot copy', () async {
+    const size = 4096;
+    final finished = Completer<int>();
+    await service.encryptFile(
+      format: CryptoFormatKind.age,
+      sourcePath: fixture('held.bin', size).path,
+      targetPath: p.join(work.path, 'held.age'),
+      options: const EncryptOptions.withPassphrase('pw'),
+      onProgress: (processed) {
+        if (processed == size && !finished.isCompleted) {
+          finished.complete(processed);
+        }
+      },
+    );
+    expect(await finished.future, size);
   });
 
   test('a file job with no progress callback still works', () async {
