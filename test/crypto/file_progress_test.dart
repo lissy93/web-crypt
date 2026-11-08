@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
+import 'package:web_crypt/core/errors/app_exception.dart';
 import 'package:web_crypt/core/utils/streams.dart';
 import 'package:web_crypt/crypto/crypto_service.dart';
 import 'package:web_crypt/crypto/format.dart';
@@ -100,10 +101,11 @@ void main() {
     expect(File(back).readAsBytesSync(), source.readAsBytesSync());
   });
 
-  test('a failed file job leaves no half-written output', () async {
+  test('a job that fails before any output leaves the target alone', () async {
     final source = fixture('secret.bin', 8192);
     final sealed = p.join(work.path, 'secret.age');
-    final back = p.join(work.path, 'back.bin');
+    final existing = File(p.join(work.path, 'report.pdf'))
+      ..writeAsStringSync('keep me');
 
     await service.encryptFile(
       format: CryptoFormatKind.age,
@@ -115,13 +117,70 @@ void main() {
     await expectLater(
       service.decryptFile(
         sourcePath: sealed,
-        targetPath: back,
+        targetPath: existing.path,
         passphrase: 'wrong',
       ),
-      throwsA(anything),
+      throwsA(isA<WrongPassphrase>()),
+    );
+    await expectLater(
+      service.encryptFile(
+        format: CryptoFormatKind.age,
+        sourcePath: source.path,
+        targetPath: existing.path,
+        options: const EncryptOptions.forRecipients([]),
+      ),
+      throwsA(isA<NoRecipients>()),
+    );
+    expect(existing.readAsStringSync(), 'keep me');
+  });
+
+  test(
+    'a target that cannot be opened is left alone',
+    () async {
+      final existing = File(p.join(work.path, 'readonly.age'))
+        ..writeAsStringSync('keep me');
+      Process.runSync('chmod', ['a-w', existing.path]);
+
+      await expectLater(
+        service.encryptFile(
+          format: CryptoFormatKind.age,
+          sourcePath: fixture('plain.bin', 4096).path,
+          targetPath: existing.path,
+          options: const EncryptOptions.withPassphrase('pw'),
+        ),
+        throwsA(isA<FileAccessFailed>()),
+      );
+      expect(existing.readAsStringSync(), 'keep me');
+    },
+    skip: Platform.isWindows ? 'needs chmod' : null,
+  );
+
+  test('a job that fails partway removes what it wrote', () async {
+    // four chunks, so three are written before the last one fails
+    final source = fixture('long.bin', 200 * 1024);
+    final sealed = File(p.join(work.path, 'long.age'));
+    final back = File(p.join(work.path, 'long.back'));
+
+    await service.encryptFile(
+      format: CryptoFormatKind.age,
+      sourcePath: source.path,
+      targetPath: sealed.path,
+      options: const EncryptOptions.withPassphrase('pw'),
+    );
+    final bytes = sealed.readAsBytesSync();
+    bytes[bytes.length - 1] ^= 0x01;
+    sealed.writeAsBytesSync(bytes);
+
+    await expectLater(
+      service.decryptFile(
+        sourcePath: sealed.path,
+        targetPath: back.path,
+        passphrase: 'pw',
+      ),
+      throwsA(isA<AppException>()),
     );
     expect(
-      File(back).existsSync(),
+      back.existsSync(),
       isFalse,
       reason: 'a half-written file still looks like a real one',
     );

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:isolate';
 
@@ -89,40 +90,45 @@ Stream<List<int>> _withProgress(Stream<List<int>> source, SendPort? progress) {
   return countingBytes(source, progress.send);
 }
 
-/// any failure removes the target, because a half-written file still looks
-/// like a real one
+/// the target is opened on the first output, as the age CLI does, so a job
+/// that fails before producing any, a wrong key or passphrase, leaves a file
+/// already there alone. a later failure removes what was written, because a
+/// half-written file still looks like a real one. written in place, since the
+/// macOS sandbox grants the chosen path and not the folder around it
 Future<void> _pipeToFile(
   String targetPath,
   Stream<List<int>> Function(Stream<List<int>>) transform,
   Stream<List<int>> source,
 ) async {
   final target = File(targetPath);
-  final sink = target.openWrite();
+  final output = StreamIterator(transform(source));
+  // only set once the open succeeded, so a target that cannot be opened is
+  // never deleted
+  RandomAccessFile? file;
   try {
-    await sink.addStream(transform(source));
-    await sink.flush();
-    await sink.close();
+    while (await output.moveNext()) {
+      file ??= await target.open(mode: FileMode.write);
+      await file.writeFrom(output.current);
+    }
+    file ??= await target.open(mode: FileMode.write);
+    await file.close();
   } on Object catch (error) {
-    await _closeQuietly(sink);
-    await _deleteQuietly(target);
+    await _quietly(output.cancel);
+    if (file != null) {
+      await _quietly(file.close);
+      await _quietly(target.delete);
+    }
     if (error is AppException) rethrow;
     if (error is FileSystemException) throw const FileAccessFailed();
     throw const CryptoFailed();
   }
 }
 
-Future<void> _closeQuietly(IOSink sink) async {
+/// cleanup after a failure, which is the error worth reporting
+Future<void> _quietly(Future<Object?> Function() step) async {
   try {
-    await sink.close();
+    await step();
   } on Object {
-    // the original failure is the one worth reporting
-  }
-}
-
-Future<void> _deleteQuietly(File file) async {
-  try {
-    if (file.existsSync()) await file.delete();
-  } on FileSystemException {
-    // nothing useful to do here
+    // best effort
   }
 }
