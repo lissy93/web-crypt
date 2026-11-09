@@ -13,7 +13,7 @@ dependencies:
     path: packages/dage
   dart_pg:
     path: packages/dart_pg
-  desktop_drop: 0.7.1
+  desktop_drop: 0.8.4
   file_picker: 11.0.3
   flutter:
     sdk: flutter
@@ -23,11 +23,11 @@ dependencies:
   flutter_web_plugins:
     sdk: flutter
   go_router: 17.4.0
-  shared_preferences: 2.5.5
-  web: 1.1.1
+  shared_preferences: 2.5.6
+  web: 1.1.2
 
 dev_dependencies:
-  crypto: ^3.0.6
+  crypto: ^3.0.8
   flutter_lints: 6.0.0
   flutter_test:
     sdk: flutter
