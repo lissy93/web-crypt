@@ -97,12 +97,16 @@ class AppShell extends StatelessWidget {
     );
   }
 
+  // a container, so the page's barrier can't hide the nav from screen readers
   Widget _content(BuildContext context) {
-    return SafeArea(
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: Layout.contentMaxWidth),
-          child: child,
+    return Semantics(
+      container: true,
+      child: SafeArea(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: Layout.contentMaxWidth),
+            child: child,
+          ),
         ),
       ),
     );
@@ -161,10 +165,13 @@ class _Rail extends StatelessWidget {
                   tooltip: 'Settings',
                   onPressed: () => context.go(Routes.settings),
                 ),
-                Text(
-                  'Settings',
-                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                    color: onSettings ? colors.text : colors.textMuted,
+                // the button's tooltip already says it
+                ExcludeSemantics(
+                  child: Text(
+                    'Settings',
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      color: onSettings ? colors.text : colors.textMuted,
+                    ),
                   ),
                 ),
               ],

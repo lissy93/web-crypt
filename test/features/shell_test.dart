@@ -39,6 +39,23 @@ void main() {
     expect(find.text('Settings'), findsOneWidget);
   });
 
+  testWidgets('a screen reader can reach the rail beside the page', (
+    tester,
+  ) async {
+    final handle = tester.ensureSemantics();
+    await pumpApp(tester);
+    expect(find.semantics.byLabel('web-crypt'), findsOne);
+    for (final tab in ['Encrypt', 'Decrypt', 'Keys']) {
+      expect(find.semantics.byLabel(RegExp('^$tab\nTab')), findsOne);
+    }
+    expect(
+      find.semantics.byPredicate((node) => node.tooltip == 'Settings'),
+      findsOne,
+    );
+    expect(find.semantics.byLabel('Settings'), findsNothing);
+    handle.dispose();
+  });
+
   testWidgets('a narrow window uses a bottom bar', (tester) async {
     await pumpApp(tester, size: const Size(700, 900));
     expect(find.byType(NavigationBar), findsOneWidget);

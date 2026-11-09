@@ -210,8 +210,7 @@ async function fill(page, selector, text) {
   await sleep(300);
 }
 
-// in-app navigation without a reload, so the unlocked keyring survives. the
-// rail has no semantics nodes to press
+// in-app navigation without a reload, so the unlocked keyring survives
 async function go(page, path) {
   await page.evaluate((path) => {
     history.pushState(null, '', path);
