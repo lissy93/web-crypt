@@ -76,7 +76,7 @@ Then open [`localhost:8080`](http://localhost:8080). It's nginx on Alpine, runni
 #### Option 2: Static host
 
 Build with `flutter build web --release --no-web-resources-cdn`, then upload `build/web` to any static host.<br>
-`vercel.json` and `netlify.toml` already have the rewrites and security headers. Neither host has Flutter, so add a step to install 3.44.8 first.
+`vercel.json` and `netlify.toml` already have the rewrites and security headers. On Vercel, just import the repo, it fetches Flutter itself. Netlify has no Flutter, so add a step to install 3.44.8 first.
 
 #### Option 3: Desktop
 

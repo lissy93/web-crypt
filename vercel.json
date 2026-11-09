@@ -1,6 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "flutter build web --release --no-web-resources-cdn",
+  "installCommand": "git clone -q --depth 1 -b 3.44.8 https://github.com/flutter/flutter.git .flutter && .flutter/bin/flutter pub get",
+  "buildCommand": ".flutter/bin/flutter build web --release --no-web-resources-cdn",
   "outputDirectory": "build/web",
   "framework": null,
   "cleanUrls": true,

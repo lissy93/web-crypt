@@ -12,6 +12,7 @@
 .dart_tool/
 .flutter-plugins-dependencies
 /build/
+/.flutter/
 
 # symbolication
 app.*.symbols
