@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:web_crypt/core/errors/app_exception.dart';
 import 'package:web_crypt/core/utils/log.dart';
 import 'package:web_crypt/crypto/format.dart';
 import 'package:web_crypt/crypto/keyring/key_entry.dart';
@@ -97,8 +98,8 @@ class StorageService {
     orElse: () => KeyringMode.undecided,
   );
 
-  Future<void> setKeyringMode(KeyringMode value) async =>
-      _prefs?.setString(_kKeyringMode, value.name);
+  Future<void> setKeyringMode(KeyringMode value) =>
+      _write(_kKeyringMode, value.name);
 
   List<KeyEntry> loadPublicKeys() {
     final raw = _prefs?.getString(_kPublicKeys);
@@ -129,16 +130,13 @@ class StorageService {
     }
   }
 
-  Future<void> savePublicKeys(List<KeyEntry> keys) async => _prefs?.setString(
-    _kPublicKeys,
-    jsonEncode([for (final key in keys) key.toJson()]),
-  );
+  Future<void> savePublicKeys(List<KeyEntry> keys) =>
+      _write(_kPublicKeys, jsonEncode([for (final key in keys) key.toJson()]));
 
   /// the sealed private keyring, armored so it is a valid age file on its own
   String? loadSealedVault() => _prefs?.getString(_kVault);
 
-  Future<void> saveSealedVault(String armored) async =>
-      _prefs?.setString(_kVault, armored);
+  Future<void> saveSealedVault(String armored) => _write(_kVault, armored);
 
   bool get canRememberMasterPassword => _secure != null;
 
@@ -168,14 +166,36 @@ class StorageService {
     }
   }
 
+  /// the vault goes first, so a clear that stops partway never leaves a vault
+  /// with no list left to reach it by
   Future<void> clearEverything() async {
-    await _prefs?.remove(_kTheme);
-    await _prefs?.remove(_kFormat);
-    await _prefs?.remove(_kMode);
-    await _prefs?.remove(_kArmor);
-    await _prefs?.remove(_kPublicKeys);
-    await _prefs?.remove(_kVault);
-    await _prefs?.remove(_kKeyringMode);
+    for (final key in const [
+      _kVault,
+      _kPublicKeys,
+      _kKeyringMode,
+      _kTheme,
+      _kFormat,
+      _kMode,
+      _kArmor,
+    ]) {
+      await _write(key, null);
+    }
     await rememberMasterPassword(null);
+  }
+
+  /// writes the keyring depends on, where a full disk or a browser refusing
+  /// storage has to be an error rather than a false nobody reads. null removes
+  Future<void> _write(String key, String? value) async {
+    final prefs = _prefs;
+    if (prefs == null) return;
+    try {
+      final written = value == null
+          ? await prefs.remove(key)
+          : await prefs.setString(key, value);
+      if (written) return;
+    } on Object catch (error) {
+      _log.warn('a write to storage failed', error);
+    }
+    throw const StorageFailed();
   }
 }

@@ -4,6 +4,7 @@ import 'package:web_crypt/app/providers.dart';
 import 'package:web_crypt/app/theme/app_colors.dart';
 import 'package:web_crypt/app/theme/spacing.dart';
 import 'package:web_crypt/core/errors/app_exception.dart';
+import 'package:web_crypt/core/errors/error_messages.dart';
 import 'package:web_crypt/core/widgets/app_button.dart';
 import 'package:web_crypt/core/widgets/app_card.dart';
 import 'package:web_crypt/core/widgets/confirm_dialog.dart';
@@ -82,16 +83,21 @@ class SettingsScreen extends ConsumerWidget {
                     confirmLabel: 'Clear everything',
                   );
                   if (!ok || !context.mounted) return;
-                  await ref.read(keyringProvider.notifier).clearAll();
+                  var done = 'Local data cleared';
+                  try {
+                    await ref.read(keyringProvider.notifier).clearAll();
+                  } on AppException catch (error) {
+                    done = messageFor(error).title;
+                  }
                   // these read their preference once, so it is now stale
                   ref
                     ..invalidate(decryptProvider)
                     ..invalidate(encryptProvider)
                     ..invalidate(themeChoiceProvider);
                   if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Local data cleared')),
-                    );
+                    ScaffoldMessenger.of(
+                      context,
+                    ).showSnackBar(SnackBar(content: Text(done)));
                   }
                 },
               ),

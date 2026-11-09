@@ -251,6 +251,121 @@ void main() {
     expect(restarted.read(keyringProvider).status, VaultStatus.locked);
   });
 
+  group('a write that does not land', () {
+    Future<(ProviderContainer, StorageService, RefusingPrefs)> booted() async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = RefusingPrefs(await SharedPreferences.getInstance());
+      final (container, storage) = await boot(StorageService(prefs, null));
+      return (container, storage, prefs);
+    }
+
+    test('a refused mode leaves nothing half chosen', () async {
+      final (container, _, prefs) = await booted();
+      final keyring = container.read(keyringProvider.notifier);
+
+      prefs.refused.add('keys.mode');
+      await expectLater(
+        keyring.chooseMasterPassword('master'),
+        throwsA(isA<StorageFailed>()),
+      );
+      expect(container.read(keyringProvider).status, VaultStatus.empty);
+
+      prefs.refused.clear();
+      await keyring.chooseMasterPassword('master');
+      expect(container.read(keyringProvider).status, VaultStatus.unlocked);
+    });
+
+    test('a refused vault adds nothing', () async {
+      final (container, storage, prefs) = await booted();
+      final keyring = container.read(keyringProvider.notifier);
+      await keyring.chooseMasterPassword('master');
+
+      prefs.refused.add('keys.vault');
+      await expectLater(
+        keyring.generateAgeKey(),
+        throwsA(isA<StorageFailed>()),
+      );
+      expect(container.read(keyringProvider).keys, isEmpty);
+      expect(storage.loadPublicKeys(), isEmpty);
+    });
+
+    test('a refused list leaves this window as it was', () async {
+      final (container, storage, prefs) = await booted();
+      final keyring = container.read(keyringProvider.notifier);
+      await keyring.chooseMasterPassword('master');
+
+      prefs.refused.add('keys.public');
+      await expectLater(
+        keyring.generateAgeKey(),
+        throwsA(isA<StorageFailed>()),
+      );
+      expect(container.read(keyringProvider).keys, isEmpty);
+
+      prefs.refused.clear();
+      await keyring.generateAgeKey();
+      final (fresh, _) = await boot(storage);
+      await fresh.read(keyringProvider.notifier).unlock('master');
+      expect(fresh.read(keyringProvider).availableIdentities, hasLength(1));
+    });
+
+    test(
+      'a delete whose list is refused still drops the private half',
+      () async {
+        final (container, storage, prefs) = await booted();
+        final keyring = container.read(keyringProvider.notifier);
+        await keyring.chooseMasterPassword('master');
+        final entry = await keyring.generateAgeKey();
+
+        // the vault has already landed without it, so memory has to agree
+        prefs.refused.add('keys.public');
+        await expectLater(
+          keyring.delete(entry.id),
+          throwsA(isA<StorageFailed>()),
+        );
+        expect(keyring.privateMaterialFor(entry.id), isNull);
+        expect(container.read(keyringProvider).availableIdentities, isEmpty);
+
+        prefs.refused.clear();
+        await keyring.delete(entry.id);
+        expect(storage.loadPublicKeys(), isEmpty);
+      },
+    );
+
+    test('a refused delete keeps the key and its private half', () async {
+      final (container, storage, prefs) = await booted();
+      final keyring = container.read(keyringProvider.notifier);
+      await keyring.chooseMasterPassword('master');
+      final entry = await keyring.generateAgeKey();
+
+      prefs.refused.add('keys.vault');
+      await expectLater(
+        keyring.delete(entry.id),
+        throwsA(isA<StorageFailed>()),
+      );
+      expect(container.read(keyringProvider).keys, hasLength(1));
+      expect(keyring.privateMaterialFor(entry.id), isNotNull);
+      expect(storage.loadPublicKeys(), hasLength(1));
+    });
+
+    test('a clear that is refused keeps the keys reachable', () async {
+      final (container, storage, prefs) = await booted();
+      final keyring = container.read(keyringProvider.notifier);
+      await keyring.chooseMasterPassword('master');
+      await keyring.generateAgeKey();
+
+      prefs.refused.add('keys.vault');
+      await expectLater(keyring.clearAll(), throwsA(isA<StorageFailed>()));
+      expect(storage.loadPublicKeys(), hasLength(1));
+      expect(container.read(keyringProvider).keys, hasLength(1));
+      expect(container.read(keyringProvider).status, VaultStatus.locked);
+
+      prefs.refused.clear();
+      await keyring.clearAll();
+      expect(storage.loadSealedVault(), isNull);
+      expect(container.read(keyringProvider).keys, isEmpty);
+    });
+  });
+
   // each container is a tab or window with its own copy of the keyring, over
   // the one shared storage
   group('two windows on one keyring', () {
@@ -313,6 +428,32 @@ void main() {
         storage.loadPublicKeys().map((key) => key.label),
         unorderedEquals(['still mine', 'friend']),
       );
+    });
+
+    test('a refused write does not lose a key sealed elsewhere', () async {
+      SharedPreferences.setMockInitialValues({});
+      final shared = await SharedPreferences.getInstance();
+      final refusing = RefusingPrefs(shared);
+      final (a, storage) = await boot(StorageService(shared, null));
+      await a.read(keyringProvider.notifier).chooseMasterPassword('master');
+      final (b, _) = await boot(StorageService(refusing, null));
+      await b.read(keyringProvider.notifier).unlock('master');
+
+      await a.read(keyringProvider.notifier).generateAgeKey(label: 'from a');
+      refusing.refused.add('keys.public');
+      await expectLater(
+        b.read(keyringProvider.notifier).generateAgeKey(label: 'refused'),
+        throwsA(isA<StorageFailed>()),
+      );
+      refusing.refused.clear();
+      await b.read(keyringProvider.notifier).generateAgeKey(label: 'from b');
+
+      final fresh = await unlocked(storage);
+      expect(
+        fresh.read(keyringProvider).keys.map((key) => key.label),
+        unorderedEquals(['from a', 'from b']),
+      );
+      expect(fresh.read(keyringProvider).availableIdentities, hasLength(2));
     });
 
     test('a vault resealed under a new password is not overwritten', () async {

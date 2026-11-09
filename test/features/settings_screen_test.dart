@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:web_crypt/crypto/format.dart';
 import 'package:web_crypt/crypto/keyring/key_entry.dart';
 import 'package:web_crypt/features/settings/about_panel.dart';
@@ -106,6 +107,25 @@ void main() {
     expect(storage.loadPublicKeys(), isEmpty);
     expect(storage.theme, ThemeChoice.system);
     expect(find.text('Local data cleared'), findsOneWidget);
+  });
+
+  testWidgets('a clear that storage refuses says so', (tester) async {
+    SharedPreferences.setMockInitialValues({'theme': ThemeChoice.dark.name});
+    final prefs = RefusingPrefs(await SharedPreferences.getInstance())
+      ..refused.add('theme');
+    final storage = StorageService(prefs, null);
+    await tester.pumpScreen(const SettingsScreen(), storage: storage);
+
+    await tester.tap(find.text('Clear all local data'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Clear everything'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Local data cleared'), findsNothing);
+    expect(
+      find.text('That change could not be stored on this device.'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('an untouched keyring explains it will ask later', (

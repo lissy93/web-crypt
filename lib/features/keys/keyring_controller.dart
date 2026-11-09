@@ -198,8 +198,9 @@ class KeyringController extends Notifier<KeyringState> {
     bool remember = false,
   }) async {
     await _readyToChoose();
-    _sealed = await _persistVault(state.vault, masterPassword);
+    // the mode first, since a vault on its own already counts as chosen
     await _storage.setKeyringMode(KeyringMode.masterPassword);
+    _sealed = await _persistVault(state.vault, masterPassword);
     _sessionPassword = masterPassword;
     state = state.copyWith(status: VaultStatus.unlocked);
     if (remember) await _storage.rememberMasterPassword(masterPassword);
@@ -310,10 +311,13 @@ class KeyringController extends Notifier<KeyringState> {
   );
 
   Future<void> clearAll() async {
-    _sessionPassword = null;
-    _sealed = null;
-    await _storage.clearEverything();
-    state = const KeyringState(loading: false);
+    try {
+      await _storage.clearEverything();
+    } finally {
+      // whatever of it landed, this window now matches
+      await _storage.reload();
+      await load();
+    }
   }
 
   /// the private material for one key, and needs the vault open
@@ -374,34 +378,37 @@ class KeyringController extends Notifier<KeyringState> {
     await _catchUp();
     final next = change(_storedKeys);
     final edit = next.vault;
-    var vault = edit != null || state.status == VaultStatus.unlocked
+    var (vault, sealed) = edit != null || state.status == VaultStatus.unlocked
         ? await _latestVault()
-        : state.vault;
+        : (state.vault, _sealed);
     if (edit != null) {
       vault = edit(vault);
       // session-only has no password, and keeps the vault in memory
       final password = _sessionPassword;
-      if (password != null) _sealed = await _persistVault(vault, password);
+      if (password != null) sealed = await _persistVault(vault, password);
     }
+    // memory holds the vault storage now has, whether or not the list lands,
+    // and [_sealed] always names the vault memory holds
+    _sealed = sealed;
+    state = state.copyWith(vault: vault);
     await _storage.savePublicKeys(next.keys);
-    state = state.copyWith(keys: next.keys, vault: vault);
+    state = state.copyWith(keys: next.keys);
   }
 
-  /// the vault as storage holds it now, opened again only when another tab or
-  /// window has sealed a different one since this one last looked
-  Future<PrivateVault> _latestVault() async {
-    if (state.status == VaultStatus.sessionOnly) return state.vault;
+  /// the vault as storage holds it now and the sealed text it came from,
+  /// opened again only when another tab or window has sealed a different one
+  /// since this one last looked
+  Future<(PrivateVault, String?)> _latestVault() async {
+    if (state.status == VaultStatus.sessionOnly) return (state.vault, _sealed);
     final password = _sessionPassword;
     if (state.status != VaultStatus.unlocked || password == null) {
       throw const KeyringLocked();
     }
     final sealed = _storage.loadSealedVault();
-    if (!_storage.persists || sealed == _sealed) return state.vault;
+    if (!_storage.persists || sealed == _sealed) return (state.vault, _sealed);
     if (sealed != null) {
       try {
-        final vault = await _openVault(sealed, password);
-        _sealed = sealed;
-        return vault;
+        return (await _openVault(sealed, password), sealed);
       } on AppException {
         // sealed under a different master password since
       }

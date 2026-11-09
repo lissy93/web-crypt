@@ -48,6 +48,11 @@ class KeyringCorrupt extends AppException {
   const KeyringCorrupt();
 }
 
+/// local storage refused a write, a full disk or a browser blocking it
+class StorageFailed extends AppException {
+  const StorageFailed();
+}
+
 /// another tab or window changed the keyring in a way this one cannot merge
 class KeyringChanged extends AppException {
   const KeyringChanged();

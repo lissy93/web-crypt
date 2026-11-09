@@ -16,6 +16,35 @@ Future<StorageService> testStorage([
   return StorageService(prefs, null);
 }
 
+/// real storage that refuses writes to some keys, the way a full disk or a
+/// browser over its quota does
+class RefusingPrefs implements SharedPreferences {
+  RefusingPrefs(this._inner);
+
+  final SharedPreferences _inner;
+  final refused = <String>{};
+
+  @override
+  String? getString(String key) => _inner.getString(key);
+
+  @override
+  bool? getBool(String key) => _inner.getBool(key);
+
+  @override
+  Future<bool> setString(String key, String value) async =>
+      !refused.contains(key) && await _inner.setString(key, value);
+
+  @override
+  Future<bool> remove(String key) async =>
+      !refused.contains(key) && await _inner.remove(key);
+
+  @override
+  Future<void> reload() => _inner.reload();
+
+  @override
+  Object? noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
 Widget _wrap(
   Widget child, {
   required StorageService storage,

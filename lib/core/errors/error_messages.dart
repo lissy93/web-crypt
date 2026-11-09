@@ -54,6 +54,10 @@ ErrorMessage messageFor(Object error) {
       'Your stored keyring could not be read.',
       'It may have been edited or partly written. Restore a backup, or clear local data to start over.',
     ),
+    StorageFailed() => const ErrorMessage(
+      'That change could not be stored on this device.',
+      'The disk may be full, or the browser may be blocking site storage.',
+    ),
     KeyringChanged() => const ErrorMessage(
       'Your keyring was changed in another window.',
       'It has been reloaded here, so try that again.',
