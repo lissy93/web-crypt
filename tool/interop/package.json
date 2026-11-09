@@ -4,6 +4,6 @@
   "type": "module",
   "description": "Headless browser checks over the built web app.",
   "dependencies": {
-    "puppeteer": "^24.0.0"
+    "puppeteer": "^25.16.0"
   }
 }
