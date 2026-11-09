@@ -17,3 +17,6 @@ Future<String?> chooseSavePath({required String suggestedName}) async => null;
 
 Future<Uint8List> readFileBytes(String path) async =>
     throw const FileAccessFailed();
+
+Future<Uint8List> readFileHead(String path, int count) async =>
+    throw const FileAccessFailed();

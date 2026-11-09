@@ -134,20 +134,15 @@ class DecryptController extends Notifier<DecryptState> {
     if (state.busy) return;
     state = const DecryptState(busy: true);
     try {
-      final bytes = await file.read();
-      final head = bytes.length <= detectionHeadSize
-          ? bytes
-          : Uint8List.sublistView(bytes, 0, detectionHeadSize);
-      final detected = FormatDetector.detect(head);
+      // peeking inside needs the whole thing, so a message's worth is read
+      // and looked inside only if that was all of it. the rest stays on disk
+      final start = await file.readHead(SizeLimits.message + 1);
+      final whole = start.length <= SizeLimits.message ? start : null;
+      final detected = FormatDetector.detect(start);
       state = DecryptState(
         detected: detected,
         source: file,
-        // peeking inside needs the whole thing, so only when it is small
-        need: _needFor(
-          detected,
-          head,
-          whole: bytes.length <= SizeLimits.message ? bytes : null,
-        ),
+        need: _needFor(detected, start, whole: whole),
       );
     } on AppException catch (error) {
       state = DecryptState(error: error);

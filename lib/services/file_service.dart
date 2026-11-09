@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:desktop_drop/desktop_drop.dart';
@@ -28,6 +29,17 @@ class PickedFile {
     final source = path;
     if (source == null) throw const FileAccessFailed();
     return platform.readFileBytes(source);
+  }
+
+  /// the first [count] bytes, leaving the rest on disk
+  Future<Uint8List> readHead(int count) async {
+    final loaded = bytes;
+    if (loaded != null) {
+      return Uint8List.sublistView(loaded, 0, min(count, loaded.length));
+    }
+    final source = path;
+    if (source == null) throw const FileAccessFailed();
+    return platform.readFileHead(source, count);
   }
 }
 

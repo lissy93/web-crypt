@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:web_crypt/core/errors/app_exception.dart';
+import 'package:web_crypt/core/utils/streams.dart';
 import 'package:web_crypt/services/file_service.dart';
 
 const canStreamToDisk = true;
@@ -53,6 +54,14 @@ Future<String?> chooseSavePath({required String suggestedName}) async {
 Future<Uint8List> readFileBytes(String path) async {
   try {
     return await File(path).readAsBytes();
+  } on FileSystemException {
+    throw const FileAccessFailed();
+  }
+}
+
+Future<Uint8List> readFileHead(String path, int count) async {
+  try {
+    return await collectBytes(File(path).openRead(0, count));
   } on FileSystemException {
     throw const FileAccessFailed();
   }
