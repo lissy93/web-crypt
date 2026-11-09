@@ -102,8 +102,24 @@ class KeyringController extends Notifier<KeyringState> {
 
   /// the key list as storage holds it now. the in-memory fallback keeps
   /// nothing, so there this window's copy is the only one
-  List<KeyEntry> get _storedKeys =>
-      _storage.persists ? _storage.loadPublicKeys() : state.keys;
+  List<KeyEntry> get _storedKeys {
+    if (!_storage.persists) return state.keys;
+    final keys = _storage.loadPublicKeys();
+    return state.status == VaultStatus.sessionOnly
+        ? _flaggedBy(keys, state.vault)
+        : keys;
+  }
+
+  /// in session-only mode a private half is held in this window's memory and
+  /// nowhere else, so [held] is what says which keys have one
+  List<KeyEntry> _flaggedBy(List<KeyEntry> keys, PrivateVault held) => [
+    for (final key in keys)
+      key.copyWith(
+        hasPrivate: held[key.id] != null,
+        privateIsProtected:
+            held[key.id] != null && (byId(key.id)?.privateIsProtected ?? false),
+      ),
+  ];
 
   @override
   KeyringState build() {
@@ -121,9 +137,13 @@ class KeyringController extends Notifier<KeyringState> {
   Future<void> load() async {
     _sessionPassword = null;
     _sealed = null;
-    final keys = _storage.loadPublicKeys();
+    var keys = _storage.loadPublicKeys();
     final sealed = _storage.loadSealedVault();
     var status = _storedStatus();
+    // nothing is held yet, whatever an earlier session wrote down
+    if (status == VaultStatus.sessionOnly) {
+      keys = _flaggedBy(keys, PrivateVault.empty);
+    }
 
     var vault = PrivateVault.empty;
     if (status == VaultStatus.locked) {
@@ -391,7 +411,11 @@ class KeyringController extends Notifier<KeyringState> {
     // and [_sealed] always names the vault memory holds
     _sealed = sealed;
     state = state.copyWith(vault: vault);
-    await _storage.savePublicKeys(next.keys);
+    await _storage.savePublicKeys(
+      state.status == VaultStatus.sessionOnly
+          ? _flaggedBy(next.keys, PrivateVault.empty)
+          : next.keys,
+    );
     state = state.copyWith(keys: next.keys);
   }
 

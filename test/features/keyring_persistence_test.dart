@@ -48,7 +48,43 @@ void main() {
     expect(container.read(keyringProvider).availableIdentities, hasLength(1));
     // the public half is still remembered, the private half is not
     expect(storage.loadPublicKeys(), hasLength(1));
+    expect(storage.loadPublicKeys().single.hasPrivate, isFalse);
     expect(storage.loadSealedVault(), isNull);
+  });
+
+  test('a session-only key is private only in the window holding it', () async {
+    final (a, storage) = await boot();
+    await a.read(keyringProvider.notifier).chooseSessionOnly();
+    final (b, _) = await boot(storage);
+
+    await a.read(keyringProvider.notifier).generateAgeKey(label: 'in a');
+    await b
+        .read(keyringProvider.notifier)
+        .importText((await generateAgeKeyPair()).recipient, label: 'friend');
+
+    final inB = {
+      for (final key in b.read(keyringProvider).keys) key.label: key,
+    };
+    expect(inB['in a']!.hasPrivate, isFalse);
+    expect(a.read(keyringProvider).keys.single.hasPrivate, isTrue);
+  });
+
+  test('after a restart a session-only key can be imported again', () async {
+    final (container, storage) = await boot();
+    final keyring = container.read(keyringProvider.notifier);
+    await keyring.chooseSessionOnly();
+    final entry = await keyring.generateAgeKey(label: 'mine');
+    final identity = keyring.privateMaterialFor(entry.id)!;
+
+    final (restarted, _) = await boot(storage);
+    final again = restarted.read(keyringProvider.notifier);
+    expect(restarted.read(keyringProvider).keys.single.hasPrivate, isFalse);
+
+    await again.importText(identity);
+    final key = restarted.read(keyringProvider).keys.single;
+    expect(key.hasPrivate, isTrue);
+    expect(key.label, 'mine');
+    expect(restarted.read(keyringProvider).availableIdentities, hasLength(1));
   });
 
   test('a key added after unlocking still reaches disk', () async {
