@@ -1,140 +1,141 @@
-# web-crypt
+<h1 align="center">web-crypt</h1>
+<p align="center">
+  🔐 <i>Encrypt and decrypt messages and files with age and PGP, all on your own device</i>
+</p>
 
-Encrypt and decrypt messages and files with age and OpenPGP. Runs entirely on
-the device, makes no network requests, and stores nothing on a server.
+<p align="center">
+  <img width="800" src=".github/screenshots/encrypt-light.png" alt="The encrypt screen" />
+</p>
 
-Anything web-crypt produces opens with `age` or `gpg`, and anything those tools
-produce opens here.
+---
 
-![the encrypt screen](.github/screenshots/encrypt-light.png)
+## About
 
-## what it does
+web-crypt encrypts and decrypts text and files with [age](https://age-encryption.org) and [OpenPGP](https://www.openpgp.org). It runs in your browser or as a desktop app, and needs no network once it's open.
 
-- messages and files, typed, pasted or dropped in
-- age (`age-encryption.org/v1`) and OpenPGP (RFC 4880/9580)
-- a passphrase, or one or more recipients' public keys
-- decrypting picks the format on its own, with nothing to choose
-- generate, import, export and store age and PGP keypairs, with private keys in
-  a keyring that is itself a standard age file
-- web, Linux, macOS and Windows
+- Encrypt a message or a file, typed, pasted or dropped in
+- Lock it with a passphrase, or with one or more people's public keys
+- Decrypting works out the format on its own
+- Generate, import and export age and PGP keypairs
+- Private keys live in a keyring that's itself an age file, locked with your master password
+- Runs on web and natively on Linux, macOS and Windows
+- Light and dark mode, following your system
+
+<details>
+<summary>More screenshots</summary>
 
 <table>
-<tr>
-<td width="50%"><img src=".github/screenshots/keys-dark.png" alt="the keys screen in the dark theme"></td>
-<td width="50%"><img src=".github/screenshots/decrypt-light.png" alt="the decrypt screen"></td>
-</tr>
-<tr>
-<td><img src=".github/screenshots/settings-light.png" alt="settings"></td>
-<td><img src=".github/screenshots/encrypt-narrow.png" alt="the encrypt screen at 420px wide"></td>
-</tr>
+  <tr>
+    <td><img width="400" src=".github/screenshots/keys-light.png" alt="The keys screen, with age and PGP keys" /></td>
+    <td><img width="400" src=".github/screenshots/decrypt-dark.png" alt="A signed PGP reply, decrypted, in dark mode" /></td>
+  </tr>
+  <tr>
+    <td><img width="400" src=".github/screenshots/recipients-light.png" alt="Encrypting to two recipients from the keyring" /></td>
+    <td><img width="400" src=".github/screenshots/encrypted-dark.png" alt="The encrypted PGP message, in dark mode" /></td>
+  </tr>
+  <tr>
+    <td align="center"><img width="240" src=".github/screenshots/mobile-encrypt-light.png" alt="The encrypt screen on a phone" /></td>
+    <td align="center"><img width="240" src=".github/screenshots/mobile-decrypt-dark.png" alt="The decrypt screen on a phone, in dark mode" /></td>
+  </tr>
 </table>
 
-Both themes follow the system, and the layout holds from 360px up.
+</details>
 
-## security
+---
 
-Data is protected at rest, and in transit between sender and recipient. A
-device or browser that is already compromised is outside what encryption can
-reach: an extension or a keylogger sees what is typed before any of this runs.
+## Security
 
-- no network at runtime, not analytics, not fonts, not a favicon. the web build
-  is compiled with `--no-web-resources-cdn`, every font is bundled, and CI
-  loads every route in headless Chromium and Firefox, failing if a single
-  request leaves the origin
-- no accounts, no sync, no telemetry, no server to talk to
-- the whole list of what is written down: preferences, public keys, and the
-  encrypted private keyring. settings clears all of it
-- private keys are sealed under a master password in age passphrase mode, so
-  the keyring is a normal age file. session-only keeps them off disk entirely
-- passphrases and key material are cleared from their controllers once done
-  with, and never reach logs, preferences, urls or route state
-- `default-src 'self'` with no remote origins and no inline scripts, in
-  `index.html` and in every deploy config
+- No network requests at all, not even for fonts. CI loads every page in Chromium and Firefox and fails if a single request leaves the origin
+- The only things saved are your preferences, public keys and the encrypted keyring, and you can wipe the lot from settings
+- Private keys can be kept for the session only, so they never touch the disk
+- Passphrases and keys are cleared once used, and never end up in logs, preferences or URLs
+- A strict CSP (`default-src 'self'`, no inline scripts) on every deploy
+- Every format and mode is round tripped against the real `age` and `gpg` binaries in CI, and all 114 vectors of the C2SP age testkit run through the real decrypt path
 
-## running it
+Encryption can't help if your device is already compromised. A dodgy browser extension or a keylogger sees what you type before web-crypt does.
+
+### Limitations
+
+- On web, large PGP files and PGP key generation freeze the tab until they finish, because browsers can't run them in the background. age streams fine, and desktop runs everything off the main thread
+- Files over 200 MB get a warning on web, and 1 GB is the cap. Desktop has no cap for age
+- It checks signatures on PGP messages you decrypt, but can't sign them yet
+- Nothing is cached for offline use
+
+---
+
+## Deploying
+
+#### Option 1: Docker
 
 ```bash
-flutter pub get
-flutter run -d chrome        # or -d linux / macos / windows
+docker compose up --build
 ```
 
-## tests
+Then open [`localhost:8080`](http://localhost:8080). It's nginx on Alpine, running unprivileged with a read-only root.
+
+#### Option 2: Static host
+
+Build with `flutter build web --release --no-web-resources-cdn`, then upload `build/web` to any static host.<br>
+`vercel.json` and `netlify.toml` already have the rewrites and security headers. Neither host has Flutter, so add a step to install 3.44.8 first.
+
+#### Option 3: Desktop
+
+Run `flutter build linux` (or `macos`, `windows`). The [Flutter docs](https://docs.flutter.dev/deployment/desktop) cover packaging.
+
+---
+
+## Developing
+
+You'll need [Flutter](https://docs.flutter.dev/get-started/install) 3.44.8 and Git. The interop tests also need `age` and `gpg`.
+
+```bash
+git clone git@github.com:Lissy93/web-crypt.git
+cd web-crypt
+flutter pub get
+flutter run -d chrome   # or linux, macos, windows
+```
 
 ```bash
 flutter analyze
-flutter test                              # unit, widget, age testkit vectors
-flutter test integration_test -d linux    # the same flows on a device
-./tool/interop/run_interop.sh             # needs age and gpg on PATH
+flutter test                              # unit, widget and age testkit
+flutter test integration_test -d linux    # the full flows on a real device
+./tool/interop/run_interop.sh             # round trips against age and gpg
 ```
 
-`run_interop.sh` builds a CLI over `lib/crypto/`, the same code the app runs,
-and round trips every format and mode against the real `age` and `gpg`
-binaries in both directions, comparing checksums. 80 checks, and a failure is a
-failed build. `flutter test` also runs all 114 vectors of the C2SP CCTV age
-testkit through the real decrypt path.
+All the crypto lives in `lib/crypto/`, and the UI only reaches it through `crypto_service.dart`. The age and PGP code comes from vendored forks of `dage` and `dart_pg`, in `packages/`.
 
-## web build
+---
 
-```bash
-flutter build web --release --no-web-resources-cdn
+## Contributing
 
-node tool/interop/check_no_network.mjs build/web
-node tool/interop/smoke_web.mjs build/web
-WEB_CRYPT_BROWSER=firefox node tool/interop/smoke_web.mjs build/web
-node tool/interop/screenshots.mjs .github/screenshots
-```
+Contributions are welcome. Follow the developing steps above, then open a PR.<br>
+If you're new to GitHub or open source, [git-in.to](https://git-in.to) is a good place to start.
 
-## docker
+---
 
-```bash
-docker compose up --build          # http://localhost:8080
-```
+## License
 
-nginx on alpine, unprivileged on 8080, read-only root, healthcheck included.
-The serve stage is `COPY` only, so buildx assembles `linux/amd64` and
-`linux/arm64` from one host-arch bundle with no emulation.
+> _**[Lissy93/web-crypt](https://github.com/Lissy93/web-crypt)** is licensed under [MIT](https://github.com/Lissy93/web-crypt/blob/HEAD/LICENSE) © [Alicia Sykes](https://aliciasykes.com) 2026._<br>
+> <sup>Inter and JetBrains Mono are bundled under the <a href="https://openfontlicense.org">SIL Open Font License</a></sup>
 
-Pointing the headless checks at the container runs them under the shipped CSP:
+<!-- License + Copyright -->
+<p  align="center">
+  <i>© <a href="https://aliciasykes.com">Alicia Sykes</a> 2026</i><br>
+  <i>Licensed under <a href="https://gist.github.com/Lissy93/143d2ee01ccc5c052a17">MIT</a></i><br>
+  <a href="https://github.com/lissy93"><img src="https://pixelflare.cc/alicia/images/octoface.webp?w=64" /></a><br>
+  <sup>Thanks for visiting :)</sup>
+</p>
 
-```bash
-WEB_CRYPT_ORIGIN=http://127.0.0.1:8080 node tool/interop/smoke_web.mjs
-```
-
-`vercel.json` and `netlify.toml` carry the build command, the rewrites, the
-wasm mime types and the same headers nginx sends. Neither host ships the
-Flutter SDK, so both need an install step for the pinned version first.
-
-## limits
-
-- PGP on web is single threaded. browsers have no isolates and `dart_pg` works
-  on whole messages rather than streams, so a large PGP file or a PGP keygen
-  blocks the tab for as long as it takes. age streams and stays responsive, and
-  on desktop every job runs in an isolate
-- web input warns over 200 MB and stops at 1 GB. desktop streams from disk with
-  no cap for age
-- glyphs outside Inter and JetBrains Mono render as boxes rather than being
-  fetched
-- no service worker, so nothing is cached for offline use
-- signatures on a decrypted message are surfaced, but producing them is not
-  built yet
-
-## layout
-
-```
-lib/
-  app/         router, shell, theme
-  core/        errors, shared widgets, utilities
-  crypto/      the only code that touches a crypto library
-  features/    encrypt, decrypt, keys, settings
-  services/    files and storage, platform-conditional
-packages/      vendored forks of dage and dart_pg
-tool/interop/  the interop harness and the headless web checks
-```
-
-The UI never touches a crypto library. Everything goes through
-`lib/crypto/crypto_service.dart`, which runs the work in an isolate on native.
-
-## licence
-
-MIT, see [LICENSE](LICENSE). Inter and JetBrains Mono are bundled under the SIL
-Open Font License.
+<!-- Dinosaurs are Awesome -->
+<!--
+                        . - ~ ~ ~ - .
+      ..     _      .-~               ~-.
+     //|     \ `..~                      `.
+    || |      }  }              /       \  \
+(\   \\ \~^..'                 |         }  \
+ \`.-~  o      /       }       |        /    \
+ (__          |       /        |       /      `.
+  `- - ~ ~ -._|      /_ - ~ ~ ^|      /- _      `.
+              |     /          |     /     ~-.     ~- _
+              |_____|          |_____|         ~ - . _ _~_-_
+-->
