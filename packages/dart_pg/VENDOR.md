@@ -37,6 +37,8 @@ cryptographic primitive is modified.
 - `key/subkey.dart` only treats a subkey as signing if its binding carries a
   valid back-signature, as GnuPG requires, so no key can claim another's
   signing subkey
+- `common/armor.dart` writes no `Version` or `Comment` header, as GnuPG
+  does, so the armor doesn't name the library
 - `packet/padding.dart` writes tag 21 rather than tag 10, which GnuPG reported
   as an invalid marker packet
 - `cryptor/symmetric/buffered_cipher.dart` runs each block through a one-block

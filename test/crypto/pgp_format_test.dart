@@ -127,6 +127,20 @@ void main() {
       }
     });
 
+    test('the armor has no Version or Comment header', () async {
+      final sealed = await encrypt(
+        Uint8List.fromList([1]),
+        const EncryptOptions.withPassphrase('pw', armor: true),
+      );
+      for (final armored in [
+        utf8.decode(sealed),
+        alice.publicKey,
+        alice.privateKey,
+      ]) {
+        expect(armored, matches(RegExp(r'^-----BEGIN PGP [A-Z ]+-----\n\n')));
+      }
+    });
+
     test('wrong passphrase is rejected', () async {
       final sealed = await encrypt(
         Uint8List.fromList(utf8.encode('x')),

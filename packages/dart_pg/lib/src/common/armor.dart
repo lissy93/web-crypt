@@ -18,9 +18,6 @@ import 'helpers.dart';
 /// See https://www.rfc-editor.org/rfc/rfc9580#section-6
 /// Author Nguyen Van Nguyen <nguyennv1981@gmail.com>
 final class Armor {
-  static const version = 'Dart PG v2';
-  static const comment = 'The Dart OpenPGP library';
-
   static const messageBegin = '-----BEGIN PGP MESSAGE';
   static const signedMessageBegin = '-----BEGIN PGP SIGNED MESSAGE';
   static const messageEnd = '-----END PGP MESSAGE';
@@ -210,10 +207,9 @@ final class Armor {
     return result.join();
   }
 
+  /// no Version or Comment of its own, so the armor doesn't name the library
   static String _addHeader([final String customComment = '']) {
     final headers = <String>[];
-    headers.add('Version: $version\n');
-    headers.add('Comment: $comment\n');
     if (customComment.trim().isNotEmpty) {
       headers.add('Comment: $customComment\n');
     }
