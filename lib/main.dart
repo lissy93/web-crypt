@@ -1,73 +1,51 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'dart:async';
-import 'dart:convert' show utf8;
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:web_crypt/app/app.dart';
+import 'package:web_crypt/app/providers.dart';
+import 'package:web_crypt/app/url_strategy_stub.dart'
+    if (dart.library.js_interop) 'package:web_crypt/app/url_strategy_web.dart';
+import 'package:web_crypt/core/utils/log.dart';
+import 'package:web_crypt/services/storage_service.dart';
 
-import 'package:convert/convert.dart' show hex;
-import 'package:webcrypto/webcrypto.dart';
+const _log = Log('app');
 
-import 'utils/color-palette.dart' as colors;
-import 'utils/app-text.dart';
+const _fontLicences = {
+  'Inter': 'assets/fonts/Inter-LICENSE.txt',
+  'JetBrains Mono': 'assets/fonts/JetBrainsMono-LICENSE.txt',
+};
 
-import 'components/title.dart';
-import 'components/main_container.dart';
-import 'components/input_section.dart';
-import 'components/output_section.dart';
-
-void main() {
-  runApp(MyApp());
+/// Flutter only collects licences from packages, and the OFL asks that its
+/// text ships with the fonts, so the bundled families go in by hand
+void registerFontLicences() {
+  LicenseRegistry.addLicense(() async* {
+    for (final entry in _fontLicences.entries) {
+      final text = await rootBundle.loadString(entry.value);
+      yield LicenseEntryWithLineBreaks([entry.key], text);
+    }
+  });
 }
 
-class MyApp extends StatefulWidget {
-  @override
-  _MyAppState createState() => _MyAppState();
-}
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  useCleanUrls();
+  registerFontLicences();
 
-ThemeData buildDarkTheme() {
-  final ThemeData base = ThemeData();
-  return base.copyWith(
-    primaryColor: colors.primary,
-    scaffoldBackgroundColor: colors.background,
-    primaryIconTheme: base.iconTheme.copyWith(color: colors.primary),
-    hintColor: colors.primary,
-    inputDecorationTheme: InputDecorationTheme(
-      // border: OutlineInputBorder(),
-      labelStyle: TextStyle(color: colors.primary, fontSize: 24.0),
+  FlutterError.onError = (details) {
+    _log.error('uncaught framework error', details.exception);
+    FlutterError.presentError(details);
+  };
+  PlatformDispatcher.instance.onError = (error, stack) {
+    _log.error('uncaught async error', error, stack);
+    return true;
+  };
+
+  final storage = await StorageService.create();
+  runApp(
+    ProviderScope(
+      overrides: [storageServiceProvider.overrideWithValue(storage)],
+      child: const WebCryptApp(),
     ),
   );
-}
-
-class _MyAppState extends State<MyApp> {
-  String _output = '-';
-  final _input = TextEditingController();
-
-  final materialAppTheme = ThemeData(
-    scaffoldBackgroundColor: colors.background,
-    fontFamily: 'RobotoMono',
-    primaryColor: colors.primary,
-    // primarySwatch: Colors.red,
-  );
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      theme: buildDarkTheme(),
-      home: Scaffold(
-        body: mainContainer(
-          context,
-          [
-            title(context, titleText),
-            inputSection(_input, _refreshHash),
-            outputSection(_output)
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _refreshHash() async {
-    final result = await Hash.sha1.digestBytes(utf8.encode(_input.text));
-    setState(() {
-      _output = hex.encode(result);
-    });
-  }
 }

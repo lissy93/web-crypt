@@ -1,0 +1,9 @@
+{
+  "name": "web-crypt-interop",
+  "private": true,
+  "type": "module",
+  "description": "Headless browser checks over the built web app.",
+  "dependencies": {
+    "puppeteer": "^25.16.0"
+  }
+}

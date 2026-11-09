@@ -1,12 +1,13 @@
 {
-    "name": "flutter_crypt_app",
-    "short_name": "flutter_crypt_app",
+    "name": "web-crypt",
+    "short_name": "web-crypt",
     "start_url": ".",
+    "scope": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter application.",
-    "orientation": "portrait-primary",
+    "background_color": "#fbfbfa",
+    "theme_color": "#1e5f74",
+    "description": "Encrypt and decrypt messages and files with age and OpenPGP. Runs entirely in your browser.",
+    "orientation": "any",
     "prefer_related_applications": false,
     "icons": [
         {

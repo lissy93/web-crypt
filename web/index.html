@@ -1,104 +1,78 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <!--
-    If you are serving your web app in a path other than the root, change the
-    href value below to reflect the base path you are serving from.
-
-    The path provided below has to start and end with a slash "/" in order for
-    it to work correctly.
-
-    For more details:
-    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
-
-    This is a placeholder for base href that will be replaced by the value of
-    the `--base-href` argument provided to `flutter build`.
-  -->
   <base href="$FLUTTER_BASE_HREF">
 
   <meta charset="UTF-8">
-  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="A new Flutter application.">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="Encrypt and decrypt messages and files with age and OpenPGP. Runs entirely in your browser, makes no network requests, and stores nothing on a server.">
+  <meta name="theme-color" content="#1e5f74" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#191a19" media="(prefers-color-scheme: dark)">
+  <meta name="referrer" content="no-referrer">
+  <meta name="robots" content="index, follow">
 
-  <!-- iOS meta tags & icons -->
-  <meta name="apple-mobile-web-app-capable" content="yes">
+  <!-- same policy the deploy configs send, for hosts without header support -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' blob: data:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'none'">
+
+  <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="flutter_crypt_app">
+  <meta name="apple-mobile-web-app-title" content="web-crypt">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
-
-  <!-- Favicon -->
-  <link rel="icon" type="image/png" href="favicon.png"/>
-
-  <title>flutter_crypt_app</title>
+  <link rel="icon" type="image/png" href="favicon.png">
   <link rel="manifest" href="manifest.json">
+
+  <title>web-crypt</title>
+
+  <style>
+    :root { color-scheme: light dark; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      background: #fbfbfa;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    @media (prefers-color-scheme: dark) {
+      html, body { background: #191a19; }
+    }
+    #boot {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 18px;
+      color: #56564f;
+      font-size: 14px;
+      transition: opacity 200ms ease;
+    }
+    @media (prefers-color-scheme: dark) { #boot { color: #b2b3ae; } }
+    #boot .mark {
+      width: 34px;
+      height: 34px;
+      border-radius: 8px;
+      border: 2px solid currentColor;
+      opacity: 0.35;
+      animation: pulse 1.4s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 0.2; }
+      50% { opacity: 0.55; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      #boot .mark { animation: none; }
+    }
+  </style>
 </head>
 <body>
-  <!-- This script installs service_worker.js to provide PWA functionality to
-       application. For more information, see:
-       https://developers.google.com/web/fundamentals/primers/service-workers -->
-  <script>
-    var serviceWorkerVersion = null;
-    var scriptLoaded = false;
-    function loadMainDartJs() {
-      if (scriptLoaded) {
-        return;
-      }
-      scriptLoaded = true;
-      var scriptTag = document.createElement('script');
-      scriptTag.src = 'main.dart.js';
-      scriptTag.type = 'application/javascript';
-      document.body.append(scriptTag);
-    }
+  <div id="boot" role="status" aria-live="polite">
+    <div class="mark"></div>
+    <div>Starting web-crypt&hellip;</div>
+    <noscript>web-crypt needs JavaScript. Everything runs in your browser, so there is no server to fall back to.</noscript>
+  </div>
 
-    if ('serviceWorker' in navigator) {
-      // Service workers are supported. Use them.
-      window.addEventListener('load', function () {
-        // Wait for registration to finish before dropping the <script> tag.
-        // Otherwise, the browser will load the script multiple times,
-        // potentially different versions.
-        var serviceWorkerUrl = 'flutter_service_worker.js?v=' + serviceWorkerVersion;
-        navigator.serviceWorker.register(serviceWorkerUrl)
-          .then((reg) => {
-            function waitForActivation(serviceWorker) {
-              serviceWorker.addEventListener('statechange', () => {
-                if (serviceWorker.state == 'activated') {
-                  console.log('Installed new service worker.');
-                  loadMainDartJs();
-                }
-              });
-            }
-            if (!reg.active && (reg.installing || reg.waiting)) {
-              // No active web worker and we have installed or are installing
-              // one for the first time. Simply wait for it to activate.
-              waitForActivation(reg.installing || reg.waiting);
-            } else if (!reg.active.scriptURL.endsWith(serviceWorkerVersion)) {
-              // When the app updates the serviceWorkerVersion changes, so we
-              // need to ask the service worker to update.
-              console.log('New service worker available.');
-              reg.update();
-              waitForActivation(reg.installing);
-            } else {
-              // Existing service worker is still good.
-              console.log('Loading app from service worker.');
-              loadMainDartJs();
-            }
-          });
-
-        // If service worker doesn't succeed in a reasonable amount of time,
-        // fallback to plain <script> tag.
-        setTimeout(() => {
-          if (!scriptLoaded) {
-            console.warn(
-              'Failed to load app from service worker. Falling back to plain <script> tag.',
-            );
-            loadMainDartJs();
-          }
-        }, 4000);
-      });
-    } else {
-      // Service workers not supported. Just drop the <script> tag.
-      loadMainDartJs();
-    }
-  </script>
+  <script src="boot.js"></script>
+  <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>
