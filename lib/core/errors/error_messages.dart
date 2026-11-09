@@ -54,6 +54,10 @@ ErrorMessage messageFor(Object error) {
       'Your stored keyring could not be read.',
       'It may have been edited or partly written. Restore a backup, or clear local data to start over.',
     ),
+    KeyringChanged() => const ErrorMessage(
+      'Your keyring was changed in another window.',
+      'It has been reloaded here, so try that again.',
+    ),
     InputTooLarge(:final limitBytes) => ErrorMessage(
       'That is bigger than this build can handle.',
       'The limit here is ${formatBytes(limitBytes)}. The desktop app has no limit.',

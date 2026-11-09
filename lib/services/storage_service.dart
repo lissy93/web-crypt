@@ -57,6 +57,12 @@ class StorageService {
     return StorageService(prefs, secure);
   }
 
+  /// false for the in-memory fallback, which nothing else can write to
+  bool get persists => _prefs != null;
+
+  /// reads are cached, and another tab or window may have written since
+  Future<void> reload() async => _prefs?.reload();
+
   ThemeChoice get theme => ThemeChoice.values.firstWhere(
     (value) => value.name == _prefs?.getString(_kTheme),
     orElse: () => ThemeChoice.system,
@@ -133,8 +139,6 @@ class StorageService {
 
   Future<void> saveSealedVault(String armored) async =>
       _prefs?.setString(_kVault, armored);
-
-  Future<void> clearSealedVault() async => _prefs?.remove(_kVault);
 
   bool get canRememberMasterPassword => _secure != null;
 

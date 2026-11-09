@@ -117,6 +117,17 @@ class _KeyDetailSheetState extends ConsumerState<_KeyDetailSheet> {
     }
   }
 
+  Future<void> _rename(KeyEntry entry) async {
+    setState(() => _error = null);
+    try {
+      await ref
+          .read(keyringProvider.notifier)
+          .rename(entry.id, _label.text.trim());
+    } on AppException catch (error) {
+      if (mounted) setState(() => _error = error);
+    }
+  }
+
   Future<void> _delete(KeyEntry entry) async {
     final ok = await confirm(
       context,
@@ -211,18 +222,14 @@ class _KeyDetailSheetState extends ConsumerState<_KeyDetailSheet> {
             TextField(
               controller: _label,
               decoration: const InputDecoration(labelText: 'Label'),
-              onSubmitted: (value) => ref
-                  .read(keyringProvider.notifier)
-                  .rename(key.id, value.trim()),
+              onSubmitted: (_) => _rename(key),
             ),
             const SizedBox(height: Space.sm),
             Align(
               alignment: Alignment.centerRight,
               child: AppButton(
                 label: 'Save label',
-                onPressed: () => ref
-                    .read(keyringProvider.notifier)
-                    .rename(key.id, _label.text.trim()),
+                onPressed: () => _rename(key),
               ),
             ),
             if (_revealed != null) ...[

@@ -48,6 +48,11 @@ class KeyringCorrupt extends AppException {
   const KeyringCorrupt();
 }
 
+/// another tab or window changed the keyring in a way this one cannot merge
+class KeyringChanged extends AppException {
+  const KeyringChanged();
+}
+
 class InputTooLarge extends AppException {
   const InputTooLarge(this.limitBytes);
 

@@ -1,8 +1,12 @@
+import 'dart:convert';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:web_crypt/app/providers.dart';
 import 'package:web_crypt/core/errors/app_exception.dart';
 import 'package:web_crypt/crypto/age/age_keys.dart';
+import 'package:web_crypt/crypto/keyring/key_import.dart';
 import 'package:web_crypt/features/keys/keyring_controller.dart';
 import 'package:web_crypt/services/storage_service.dart';
 
@@ -213,5 +217,160 @@ void main() {
     expect(storage.loadPublicKeys(), isEmpty);
     expect(storage.loadSealedVault(), isNull);
     expect(storage.keyringMode, KeyringMode.undecided);
+  });
+
+  test('the in-memory fallback still holds keys for the session', () async {
+    for (final choose in [
+      (KeyringController keyring) => keyring.chooseSessionOnly(),
+      (KeyringController keyring) => keyring.chooseMasterPassword('master'),
+    ]) {
+      final (container, _) = await boot(const StorageService.inMemory());
+      final keyring = container.read(keyringProvider.notifier);
+      await choose(keyring);
+      await keyring.generateAgeKey();
+      await keyring.generateAgeKey();
+      expect(container.read(keyringProvider).availableIdentities, hasLength(2));
+    }
+  });
+
+  test('a sealed vault counts even if its mode was never written', () async {
+    final (container, storage) = await boot();
+    await container
+        .read(keyringProvider.notifier)
+        .chooseMasterPassword('master');
+    await container.read(keyringProvider.notifier).generateAgeKey();
+
+    final (restarted, _) = await boot(
+      await testStorage({
+        'keys.vault': storage.loadSealedVault()!,
+        'keys.public': jsonEncode([
+          for (final key in storage.loadPublicKeys()) key.toJson(),
+        ]),
+      }),
+    );
+    expect(restarted.read(keyringProvider).status, VaultStatus.locked);
+  });
+
+  // each container is a tab or window with its own copy of the keyring, over
+  // the one shared storage
+  group('two windows on one keyring', () {
+    Future<ProviderContainer> unlocked(StorageService storage) async {
+      final (container, _) = await boot(storage);
+      await container.read(keyringProvider.notifier).unlock('master');
+      return container;
+    }
+
+    test('keys added in each are all kept', () async {
+      final (a, storage) = await boot();
+      await a.read(keyringProvider.notifier).chooseMasterPassword('master');
+      final b = await unlocked(storage);
+
+      await a.read(keyringProvider.notifier).generateAgeKey(label: 'from a');
+      await b.read(keyringProvider.notifier).generateAgeKey(label: 'from b');
+      await a
+          .read(keyringProvider.notifier)
+          .importText((await generateAgeKeyPair()).recipient, label: 'friend');
+
+      final fresh = await unlocked(storage);
+      final keyring = fresh.read(keyringProvider);
+      expect(
+        keyring.keys.map((key) => key.label),
+        unorderedEquals(['from a', 'from b', 'friend']),
+      );
+      expect(keyring.availableIdentities, hasLength(2));
+      expect(
+        a.read(keyringProvider).availableIdentities,
+        hasLength(2),
+        reason: 'even a public import picks up what the other window sealed',
+      );
+    });
+
+    test('a change sees writes that landed behind its cached copy', () async {
+      final (a, storage) = await boot();
+      final keyring = a.read(keyringProvider.notifier);
+      await keyring.chooseMasterPassword('master');
+      final mine = await keyring.generateAgeKey(label: 'mine');
+
+      // another tab's import reaches the store, but not this tab's cache
+      final friend = await parseKeyMaterial(
+        (await generateAgeKeyPair()).recipient,
+        id: 'friend',
+        now: DateTime.now(),
+        label: 'friend',
+      );
+      SharedPreferences.setMockInitialValues({
+        'keys.mode': storage.keyringMode.name,
+        'keys.vault': storage.loadSealedVault()!,
+        'keys.public': jsonEncode([
+          for (final key in [...storage.loadPublicKeys(), friend.entry])
+            key.toJson(),
+        ]),
+      });
+      expect(storage.loadPublicKeys(), hasLength(1));
+
+      await keyring.rename(mine.id, 'still mine');
+      expect(
+        storage.loadPublicKeys().map((key) => key.label),
+        unorderedEquals(['still mine', 'friend']),
+      );
+    });
+
+    test('a vault resealed under a new password is not overwritten', () async {
+      final (a, storage) = await boot();
+      await a.read(keyringProvider.notifier).chooseMasterPassword('master');
+      final b = await unlocked(storage);
+      await a.read(keyringProvider.notifier).generateAgeKey(label: 'kept');
+      await a
+          .read(keyringProvider.notifier)
+          .changeMasterPassword('master', 'changed');
+
+      await expectLater(
+        b.read(keyringProvider.notifier).generateAgeKey(label: 'lost'),
+        throwsA(isA<KeyringChanged>()),
+      );
+      expect(b.read(keyringProvider).status, VaultStatus.locked);
+
+      final (fresh, _) = await boot(storage);
+      await fresh.read(keyringProvider.notifier).unlock('changed');
+      expect(fresh.read(keyringProvider).keys.single.label, 'kept');
+      expect(fresh.read(keyringProvider).availableIdentities, hasLength(1));
+    });
+
+    test('a window catches up when another clears everything', () async {
+      final (a, storage) = await boot();
+      await a.read(keyringProvider.notifier).chooseMasterPassword('master');
+      await a.read(keyringProvider.notifier).generateAgeKey();
+      final (b, _) = await boot(storage);
+      expect(b.read(keyringProvider).status, VaultStatus.locked);
+
+      await a.read(keyringProvider.notifier).clearAll();
+      final recipient = (await generateAgeKeyPair()).recipient;
+      await expectLater(
+        b.read(keyringProvider.notifier).importText(recipient),
+        throwsA(isA<KeyringChanged>()),
+      );
+      expect(b.read(keyringProvider).status, VaultStatus.empty);
+
+      await b.read(keyringProvider.notifier).importText(recipient);
+      expect(storage.loadPublicKeys(), hasLength(1));
+    });
+
+    test('a mode chosen in another window is not chosen over', () async {
+      final (a, storage) = await boot();
+      final (b, _) = await boot(storage);
+      await a.read(keyringProvider.notifier).chooseMasterPassword('master');
+      await a.read(keyringProvider.notifier).generateAgeKey();
+      final sealed = storage.loadSealedVault();
+
+      for (final choose in [
+        () => b.read(keyringProvider.notifier).chooseSessionOnly(),
+        () => b.read(keyringProvider.notifier).chooseMasterPassword('other'),
+      ]) {
+        await expectLater(choose(), throwsA(isA<KeyringChanged>()));
+      }
+      expect(storage.loadSealedVault(), sealed);
+      expect(storage.keyringMode, KeyringMode.masterPassword);
+      expect(b.read(keyringProvider).status, VaultStatus.locked);
+    });
   });
 }
