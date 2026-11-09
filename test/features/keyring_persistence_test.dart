@@ -352,7 +352,7 @@ void main() {
         await keyring.chooseMasterPassword('master');
         final entry = await keyring.generateAgeKey();
 
-        // the vault has already landed without it, so memory has to agree
+        // the vault was already saved without it, so memory should agree
         prefs.refused.add('keys.public');
         await expectLater(
           keyring.delete(entry.id),
@@ -402,8 +402,7 @@ void main() {
     });
   });
 
-  // each container is a tab or window with its own copy of the keyring, over
-  // the one shared storage
+  // each container is a separate window, all sharing the same storage
   group('two windows on one keyring', () {
     Future<ProviderContainer> unlocked(StorageService storage) async {
       final (container, _) = await boot(storage);

@@ -16,8 +16,7 @@ Future<StorageService> testStorage([
   return StorageService(prefs, null);
 }
 
-/// real storage that refuses writes to some keys, the way a full disk or a
-/// browser over its quota does
+/// real storage that refuses writes to some keys, like a full disk would
 class RefusingPrefs implements SharedPreferences {
   RefusingPrefs(this._inner);
 

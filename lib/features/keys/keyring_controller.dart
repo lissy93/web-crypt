@@ -76,7 +76,7 @@ class KeyringState {
 
 const _log = Log('keyring');
 
-/// a change to the key list, and to the private vault when it is touched too
+/// a new key list, plus a change to the private vault if it needs one
 typedef _Change = ({
   List<KeyEntry> keys,
   PrivateVault Function(PrivateVault vault)? vault,
@@ -92,16 +92,14 @@ class KeyringController extends Notifier<KeyringState> {
   /// copied, watched and dumped in debug tooling
   String? _sessionPassword;
 
-  /// the sealed vault as this window last read or wrote it, which tells
-  /// whether another tab or window has sealed a different one since
+  /// the sealed vault this window last saw, to spot changes from other windows
   String? _sealed;
 
   StorageService get _storage => ref.read(storageServiceProvider);
 
   CryptoService get _crypto => ref.read(cryptoServiceProvider);
 
-  /// the key list as storage holds it now. the in-memory fallback keeps
-  /// nothing, so there this window's copy is the only one
+  /// the stored key list, or this window's copy when storage keeps nothing
   List<KeyEntry> get _storedKeys {
     if (!_storage.persists) return state.keys;
     final keys = _storage.loadPublicKeys();
@@ -110,8 +108,7 @@ class KeyringController extends Notifier<KeyringState> {
         : keys;
   }
 
-  /// in session-only mode a private half is held in this window's memory and
-  /// nowhere else, so [held] is what says which keys have one
+  /// session-only private keys live only in [held], so it decides the flags
   List<KeyEntry> _flaggedBy(List<KeyEntry> keys, PrivateVault held) => [
     for (final key in keys)
       key.copyWith(
@@ -334,7 +331,7 @@ class KeyringController extends Notifier<KeyringState> {
     try {
       await _storage.clearEverything();
     } finally {
-      // whatever of it landed, this window now matches
+      // match whatever really got cleared, even if it stopped partway
       await _storage.reload();
       await load();
     }
@@ -389,11 +386,7 @@ class KeyringController extends Notifier<KeyringState> {
     );
   });
 
-  /// every change goes through here, and [change] is given the list as
-  /// storage holds it now rather than this window's copy, so keys another tab
-  /// or window added in the meantime are kept. the vault is written before
-  /// the list, so no entry claims a private half that was never sealed, and
-  /// state only moves once both are written
+  /// applies a change to the stored keys, saving the vault before the list
   Future<void> _update(_Change Function(List<KeyEntry> keys) change) async {
     await _catchUp();
     final next = change(_storedKeys);
@@ -407,8 +400,7 @@ class KeyringController extends Notifier<KeyringState> {
       final password = _sessionPassword;
       if (password != null) sealed = await _persistVault(vault, password);
     }
-    // memory holds the vault storage now has, whether or not the list lands,
-    // and [_sealed] always names the vault memory holds
+    // keep memory in step with the saved vault, even if saving the list fails
     _sealed = sealed;
     state = state.copyWith(vault: vault);
     await _storage.savePublicKeys(
@@ -419,9 +411,7 @@ class KeyringController extends Notifier<KeyringState> {
     state = state.copyWith(keys: next.keys);
   }
 
-  /// the vault as storage holds it now and the sealed text it came from,
-  /// opened again only when another tab or window has sealed a different one
-  /// since this one last looked
+  /// the stored vault, opened again only if another window has changed it
   Future<(PrivateVault, String?)> _latestVault() async {
     if (state.status == VaultStatus.sessionOnly) return (state.vault, _sealed);
     final password = _sessionPassword;
@@ -441,8 +431,7 @@ class KeyringController extends Notifier<KeyringState> {
     throw const KeyringChanged();
   }
 
-  /// what storage says about the private keys, before anything is unlocked.
-  /// a sealed vault is the one that counts, whatever the mode says
+  /// the vault status storage implies, where a saved vault always means locked
   VaultStatus _storedStatus() {
     if (_storage.loadSealedVault() != null) return VaultStatus.locked;
     return _storage.keyringMode == KeyringMode.sessionOnly
@@ -450,16 +439,13 @@ class KeyringController extends Notifier<KeyringState> {
         : VaultStatus.empty;
   }
 
-  /// the mode is chosen once, from an empty keyring, and never over one that
-  /// another tab or window has already chosen
+  /// the mode is chosen only once, and never over another window's choice
   Future<void> _readyToChoose() async {
     await _catchUp();
     if (state.status != VaultStatus.empty) throw const KeyringChanged();
   }
 
-  /// reads storage again before a change. if another tab or window has since
-  /// chosen a mode, sealed a vault or cleared everything, this one takes that
-  /// on rather than writing over it
+  /// re-reads storage, and reloads if another window changed or cleared it
   Future<void> _catchUp() async {
     if (!_storage.persists) return;
     await _storage.reload();

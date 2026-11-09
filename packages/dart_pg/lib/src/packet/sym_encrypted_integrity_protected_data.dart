@@ -17,9 +17,7 @@ import '../type/encrypted_data_packet.dart';
 import '../type/packet_list.dart';
 import 'base_packet.dart';
 
-/// The session key does not fit a version 1 SEIPD packet. Its random prefix
-/// ends by repeating two octets, and a wrong key scrambles them, which is the
-/// quick check of RFC 9580 section 5.13.2.
+/// The session key is wrong, caught by the quick check of RFC 9580 5.13.2.
 final class QuickCheckError extends Error {
   @override
   String toString() => 'Session key quick check failed.';

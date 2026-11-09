@@ -30,8 +30,7 @@ Future<CryptoJobResult> runCryptoJob(
   }
 }
 
-/// closures in one function share a context, so spawning from
-/// [runCryptoJob] would copy onProgress, and whatever it holds, across too
+/// its own function, so the isolate does not copy onProgress across too
 Future<CryptoJobResult> _spawn(CryptoJob job, [SendPort? progress]) =>
     Isolate.run(() => _execute(job, progress), debugName: 'crypto');
 
@@ -90,20 +89,16 @@ Stream<List<int>> _withProgress(Stream<List<int>> source, SendPort? progress) {
   return countingBytes(source, progress.send);
 }
 
-/// the target is opened on the first output, as the age CLI does, so a job
-/// that fails before producing any, a wrong key or passphrase, leaves a file
-/// already there alone. a later failure removes what was written, because a
-/// half-written file still looks like a real one. written in place, since the
-/// macOS sandbox grants the chosen path and not the folder around it
+/// opens the target only once there is output, so a wrong key leaves it alone
 Future<void> _pipeToFile(
   String targetPath,
   Stream<List<int>> Function(Stream<List<int>>) transform,
   Stream<List<int>> source,
 ) async {
+  // written in place, as macOS only lets the app write the path that was picked
   final target = File(targetPath);
   final output = StreamIterator(transform(source));
-  // only set once the open succeeded, so a target that cannot be opened is
-  // never deleted
+  // set only once opening works, so a file we could not open is never deleted
   RandomAccessFile? file;
   try {
     while (await output.moveNext()) {
@@ -114,6 +109,7 @@ Future<void> _pipeToFile(
     await file.close();
   } on Object catch (error) {
     await _quietly(output.cancel);
+    // a half-written file would still look like a real one
     if (file != null) {
       await _quietly(file.close);
       await _quietly(target.delete);

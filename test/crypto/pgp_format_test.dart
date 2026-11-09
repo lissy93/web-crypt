@@ -284,12 +284,11 @@ void main() {
   });
 
   group('a wrong passphrase is not a changed message', () {
-    // GnuPG 2.2 `gpg -c` of "made by gpg -c\n": a version 4 SKESK with no
-    // session key of its own, so nothing checks the passphrase until the data
+    // from gpg 2.2 `gpg -c`, where nothing checks the passphrase until the data
     final symmetric = File(
       'test/fixtures/pgp-symmetric-v4.gpg',
     ).readAsBytesSync();
-    // GnuPG 2.4.4, an AEAD-wrapped session key over OCB chunks
+    // from gpg 2.4.4, where the passphrase is checked straight away
     final aead = File('test/fixtures/pgp-aead-chunked.gpg').readAsBytesSync();
 
     Uint8List flipped(Uint8List bytes, int at) =>

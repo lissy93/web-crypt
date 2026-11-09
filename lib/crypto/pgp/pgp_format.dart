@@ -70,8 +70,7 @@ class PgpFormat implements CryptoFormat {
 
     final message = EncryptedMessage(packets);
 
-    // the session key comes first, so a failure there is the wrong key or
-    // passphrase, and a failure past it is the data itself
+    // a failure to unlock means the wrong key or passphrase, not changed data
     final keys = keySlots.isEmpty
         ? const <PrivateKeyInterface>[]
         : _matchingKeys(keySlots, opts.identities);
@@ -144,9 +143,7 @@ class PgpFormat implements CryptoFormat {
     }
   }
 
-  /// the keys [passphrase] unwraps, slot by slot. a slot without AEAD checks
-  /// nothing, so a wrong passphrase can still decode to a real algorithm byte,
-  /// and only a key that fits it is worth trying
+  /// keys the passphrase unlocks, skipping any the wrong size for its cipher
   static Iterable<SessionKeyInterface> _openPasswordSlots(
     Iterable<SymEncryptedSessionKeyPacket> slots,
     String passphrase,
@@ -166,8 +163,7 @@ class PgpFormat implements CryptoFormat {
     }
   }
 
-  /// null only for a [guessed] key the quick check turns down. a slot without
-  /// AEAD takes any passphrase without complaint, so a wrong one shows here
+  /// null when a guessed key fails the quick check, meaning a wrong passphrase
   static LiteralMessageInterface? _open(
     EncryptedMessageInterface message,
     SessionKeyInterface key, {

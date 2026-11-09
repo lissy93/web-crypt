@@ -16,7 +16,7 @@ import 'package:web_crypt/services/file_service.dart';
 
 import '../support/harness.dart';
 
-/// a file on disk that notes the most of it any one read pulled in
+/// a file on disk that tracks the most bytes any single read returned
 class _Watched extends PickedFile {
   _Watched({required super.name, required super.size, super.path});
 

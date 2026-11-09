@@ -63,8 +63,7 @@ void main() {
     expect(File(back).readAsBytesSync(), source.readAsBytesSync());
   });
 
-  // the controllers report from a closure over a notifier, which an isolate
-  // cannot copy. a closure over a future cannot be copied either
+  // the app's callbacks hold things an isolate cannot copy, and so does this
   test('progress can come from a closure an isolate cannot copy', () async {
     const size = 4096;
     final finished = Completer<int>();

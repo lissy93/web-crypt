@@ -134,8 +134,7 @@ class DecryptController extends Notifier<DecryptState> {
     if (state.busy) return;
     state = const DecryptState(busy: true);
     try {
-      // peeking inside needs the whole thing, so a message's worth is read
-      // and looked inside only if that was all of it. the rest stays on disk
+      // read at most 1 MB, and only look inside if that was the whole file
       final start = await file.readHead(SizeLimits.message + 1);
       final whole = start.length <= SizeLimits.message ? start : null;
       final detected = FormatDetector.detect(start);

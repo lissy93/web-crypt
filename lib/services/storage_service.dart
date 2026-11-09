@@ -166,8 +166,7 @@ class StorageService {
     }
   }
 
-  /// the vault goes first, so a clear that stops partway never leaves a vault
-  /// with no list left to reach it by
+  /// the vault goes first, so a half-done clear never strands private keys
   Future<void> clearEverything() async {
     for (final key in const [
       _kVault,
@@ -183,8 +182,7 @@ class StorageService {
     await rememberMasterPassword(null);
   }
 
-  /// writes the keyring depends on, where a full disk or a browser refusing
-  /// storage has to be an error rather than a false nobody reads. null removes
+  /// throws if a write fails, instead of returning false. null removes the key
   Future<void> _write(String key, String? value) async {
     final prefs = _prefs;
     if (prefs == null) return;
