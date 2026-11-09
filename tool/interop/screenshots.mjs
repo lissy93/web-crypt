@@ -94,9 +94,6 @@ async function makeCast() {
         '--armor', '--trust-model', 'always',
         '--local-user', 'dave@example.com',
         '--recipient', 'sam@example.com',
-        // gpg compresses by default, and signatures inside a compressed
-        // packet are not read
-        '--compress-algo', 'none',
         '--sign', '--encrypt',
       ],
       REPLY,

@@ -6,7 +6,10 @@ library;
 
 import 'dart:typed_data';
 
+import '../enum/signature_type.dart';
 import '../packet/packet_list.dart';
+import '../packet/signature.dart';
+import '../packet/signature/embedded_signature.dart';
 import '../packet/signature/key_flags.dart';
 import '../type/key.dart';
 import '../type/signature_packet.dart';
@@ -77,7 +80,27 @@ final class Subkey implements SubkeyInterface {
         }
       }
     }
-    return keyPacket.isSigningKey;
+    return keyPacket.isSigningKey && _isBacksigned;
+  }
+
+  /// the subkey signs back, so no key can claim another's signing subkey
+  bool get _isBacksigned {
+    final bound = Uint8List.fromList([
+      ...mainKey.keyPacket.signBytes,
+      ...keyPacket.signBytes,
+    ]);
+    return bindingSignatures.any((binding) {
+      final embedded = binding.getSubpacket<EmbeddedSignature>();
+      if (embedded == null) return false;
+      try {
+        final backsig = SignaturePacket.fromBytes(embedded.data);
+        return backsig.signatureType == SignatureType.keyBinding &&
+            backsig.verify(keyPacket, bound) &&
+            binding.verify(mainKey.keyPacket, bound);
+      } on Object {
+        return false;
+      }
+    });
   }
 
   @override

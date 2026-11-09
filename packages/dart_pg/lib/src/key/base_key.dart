@@ -285,7 +285,7 @@ abstract class BaseKey implements KeyInterface {
     revocationSignatures = remainPackets
         .takeWhile((packet) {
           if (packet is SignaturePacketInterface) {
-            return packet.isCertRevocation;
+            return packet.isKeyRevocation;
           }
           return false;
         })

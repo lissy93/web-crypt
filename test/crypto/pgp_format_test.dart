@@ -3,7 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:dart_pg/dart_pg.dart';
-import 'package:dart_pg/src/enum/aead_algorithm.dart';
+import 'package:dart_pg/src/enum/signature_type.dart';
 import 'package:dart_pg/src/packet/key/session_key.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:web_crypt/core/errors/app_exception.dart';
@@ -446,6 +446,140 @@ void main() {
       expect(PgpFormat.peek(keyed)!.needsKey, isTrue);
       expect(PgpFormat.peek(keyed)!.needsPassphrase, isFalse);
       expect(PgpFormat.peek(pattern(64)), isNull);
+    });
+  });
+
+  group('signatures', () {
+    Future<List<SignatureInfo>> signaturesIn(
+      Uint8List sealed, {
+      required List<Recipient> known,
+      String? passphrase,
+    }) async {
+      var found = const <SignatureInfo>[];
+      await decrypt(
+        sealed,
+        DecryptOptions(
+          passphrase: passphrase,
+          identities: [identityOf(bob)],
+          verificationKeys: known,
+          onMetadata: (metadata) => found = metadata.signatures,
+        ),
+      );
+      return found;
+    }
+
+    Uint8List toBob(LiteralMessageInterface message) => message
+        .encrypt(encryptionKeys: [parsePgpPublicKey(bob.publicKey)])
+        .packetList
+        .encode();
+
+    LiteralMessageInterface signedByAlice() => OpenPGP.createLiteralMessage(
+      utf8.encode('hi bob'),
+    ).sign([parsePgpPrivateKey(alice.privateKey)]);
+
+    test('a good one checks out, compressed or not', () async {
+      final signed = signedByAlice();
+      for (final message in [
+        signed,
+        signed.compress(CompressionAlgorithm.zlib),
+      ]) {
+        final found = await signaturesIn(
+          toBob(message),
+          known: [recipientOf(alice)],
+        );
+        expect(found.single.verdict, SignatureVerdict.valid);
+      }
+    });
+
+    test('one by a key not held still shows', () async {
+      final found = await signaturesIn(
+        toBob(signedByAlice()),
+        known: [recipientOf(bob)],
+      );
+      expect(found.single.verdict, SignatureVerdict.unknownSigner);
+    });
+
+    test('one by a revoked key does not check out', () async {
+      final key = parsePgpPrivateKey(alice.privateKey);
+      final revocation = SignaturePacket.createSignature(
+        key.secretKeyPacket,
+        SignatureType.keyRevocation,
+        key.publicKey.keyPacket.signBytes,
+      );
+      final [primary, ...rest] = key.publicKey.packetList.toList();
+      final revoked = PublicKey(PacketList([primary, revocation, ...rest]));
+      final found = await signaturesIn(
+        toBob(signedByAlice()),
+        known: [
+          Recipient(
+            format: CryptoFormatKind.pgp,
+            material: revoked.armor(),
+            label: 'Alice',
+          ),
+        ],
+      );
+      expect(found.single.verdict, SignatureVerdict.invalid);
+    });
+
+    test('one moved onto other text does not check out', () async {
+      final moved = LiteralMessage(
+        PacketList([
+          LiteralDataPacket(Uint8List.fromList(utf8.encode('hi mallory'))),
+          ...signedByAlice().packetList.whereType<SignaturePacketInterface>(),
+        ]),
+      );
+      final found = await signaturesIn(
+        toBob(moved),
+        known: [recipientOf(alice)],
+      );
+      expect(found.single.verdict, SignatureVerdict.invalid);
+    });
+
+    // gpg 2.2, zlib compressed and signed by the [S] subkey of this key
+    final signer = File(
+      'test/fixtures/pgp-signing-subkey.asc',
+    ).readAsStringSync();
+
+    Future<SignatureInfo> gpgSignedFor(String key) async {
+      final found = await signaturesIn(
+        File('test/fixtures/pgp-signed-by-subkey.gpg').readAsBytesSync(),
+        passphrase: 'right horse',
+        known: [
+          Recipient(format: CryptoFormatKind.pgp, material: key, label: 'K'),
+        ],
+      );
+      return found.single;
+    }
+
+    test('gpg signing with a subkey checks out', () async {
+      final found = await gpgSignedFor(signer);
+      expect(found.keyId, 'E22C9887A9C1FA18');
+      expect(found.verdict, SignatureVerdict.valid);
+    });
+
+    test('a revoked subkey does not check out', () async {
+      final revoked = File(
+        'test/fixtures/pgp-signing-subkey-revoked.asc',
+      ).readAsStringSync();
+      expect((await gpgSignedFor(revoked)).verdict, SignatureVerdict.invalid);
+    });
+
+    test('a subkey bound to the wrong key does not check out', () async {
+      // bob claims the signing subkey, but it never signed back to him
+      final theirs = parsePgpPublicKey(signer).subkeys.first.keyPacket;
+      final bobs = parsePgpPrivateKey(bob.privateKey);
+      final claimed = PublicKey(
+        PacketList([
+          ...bobs.publicKey.packetList,
+          theirs,
+          SignaturePacket.createSubkeyBinding(
+            bobs.secretKeyPacket,
+            theirs,
+            forSigning: true,
+          ),
+        ]),
+      ).armor();
+      expect((await gpgSignedFor(claimed)).verdict, SignatureVerdict.invalid);
     });
   });
 

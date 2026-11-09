@@ -32,6 +32,11 @@ cryptographic primitive is modified.
   a version 4 SKESK, which checks nothing itself, is not mistaken for a changed
   message at the MDC, as GnuPG reads it too. it only picks which error a
   person at the keyboard sees, never what gets decrypted
+- `key/base_key.dart` collects key revocations rather than certification
+  revocations after the primary key, so a revoked key reads as revoked
+- `key/subkey.dart` only treats a subkey as signing if its binding carries a
+  valid back-signature, as GnuPG requires, so no key can claim another's
+  signing subkey
 - `packet/padding.dart` writes tag 21 rather than tag 10, which GnuPG reported
   as an invalid marker packet
 - `cryptor/symmetric/buffered_cipher.dart` runs each block through a one-block

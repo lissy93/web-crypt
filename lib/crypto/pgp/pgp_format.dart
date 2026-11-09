@@ -164,7 +164,7 @@ class PgpFormat implements CryptoFormat {
   }
 
   /// null when a guessed key fails the quick check, meaning a wrong passphrase
-  static LiteralMessageInterface? _open(
+  static LiteralMessage? _open(
     EncryptedMessageInterface message,
     SessionKeyInterface key, {
     bool guessed = false,
@@ -211,54 +211,67 @@ class PgpFormat implements CryptoFormat {
     return matches;
   }
 
+  /// a verdict for each signature, compressed or not, known signer or not
   static List<SignatureInfo> _signatures(
-    LiteralMessageInterface message,
+    LiteralMessage message,
     List<Recipient> verificationKeys,
   ) {
-    final signatures = message.packetList
-        .whereType<SignaturePacketInterface>()
-        .toList(growable: false);
+    final signatures = message.signature.packets;
     if (signatures.isEmpty) return const [];
+    final signers = _signers(verificationKeys);
+    final data = message.literalData.signBytes;
+    return [
+      for (final signature in signatures) _check(signature, signers, data),
+    ];
+  }
 
-    final keys = <KeyInterface>[];
-    for (final recipient in verificationKeys) {
+  /// anything short of a clean check by a key that can vouch is invalid
+  static SignatureInfo _check(
+    SignaturePacketInterface signature,
+    Map<String, KeyPacketInterface?> signers,
+    Uint8List data,
+  ) {
+    var keyId = '';
+    var verdict = SignatureVerdict.invalid;
+    try {
+      keyId = keyIdHex(signature.issuerKeyID);
+      final key = signers[keyId];
+      if (key != null && signature.verify(key, data)) {
+        verdict = SignatureVerdict.valid;
+      } else if (!signers.containsKey(keyId)) {
+        verdict = SignatureVerdict.unknownSigner;
+      }
+    } on Object {
+      // malformed, so it stays invalid
+    }
+    return SignatureInfo(keyId: keyId, verdict: verdict);
+  }
+
+  /// key packets by id, null for a held key that can't vouch for anything
+  static Map<String, KeyPacketInterface?> _signers(List<Recipient> recipients) {
+    final signers = <String, KeyPacketInterface?>{};
+    // a usable copy of a key wins over an unusable one
+    void hold(Uint8List id, KeyPacketInterface? packet) => signers.update(
+      keyIdHex(id),
+      (held) => held ?? packet,
+      ifAbsent: () => packet,
+    );
+    for (final recipient in recipients) {
       if (recipient.format != CryptoFormatKind.pgp) continue;
       try {
-        keys.add(parsePgpPublicKey(recipient.material));
-      } on AppException {
-        continue;
+        final key = parsePgpPublicKey(recipient.material);
+        final live = !key.isRevoked();
+        final primary = key.keyPacket;
+        hold(primary.keyID, live && primary.isSigningKey ? primary : null);
+        for (final subkey in key.subkeys) {
+          final fit = live && !subkey.isRevoked() && subkey.isSigningKey;
+          hold(subkey.keyID, fit ? subkey.keyPacket : null);
+        }
+      } on Object {
+        // one broken key shouldn't stop the rest
       }
     }
-
-    if (keys.isEmpty) {
-      return [
-        for (final signature in signatures)
-          SignatureInfo(
-            keyId: keyIdHex(signature.issuerKeyID),
-            verdict: SignatureVerdict.unknownSigner,
-          ),
-      ];
-    }
-
-    try {
-      return [
-        for (final result in message.verify(keys))
-          SignatureInfo(
-            keyId: keyIdHex(result.keyID),
-            verdict: result.isVerified
-                ? SignatureVerdict.valid
-                : SignatureVerdict.invalid,
-          ),
-      ];
-    } on Object {
-      return [
-        for (final signature in signatures)
-          SignatureInfo(
-            keyId: keyIdHex(signature.issuerKeyID),
-            verdict: SignatureVerdict.unknownSigner,
-          ),
-      ];
-    }
+    return signers;
   }
 
   static List<KeyInterface> _parseRecipients(List<Recipient> recipients) {

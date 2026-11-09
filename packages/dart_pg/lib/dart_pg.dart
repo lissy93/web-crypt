@@ -7,6 +7,7 @@ library;
 export 'src/openpgp.dart';
 export 'src/type/encrypted_message.dart';
 export 'src/type/key.dart';
+export 'src/type/key_packet.dart';
 export 'src/type/literal_data.dart';
 export 'src/type/literal_message.dart';
 export 'src/type/packet.dart';
