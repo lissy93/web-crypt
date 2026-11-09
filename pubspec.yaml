@@ -18,7 +18,7 @@ dependencies:
   flutter:
     sdk: flutter
   flutter_riverpod: 3.4.2
-  flutter_secure_storage: 10.3.1
+  flutter_secure_storage: 10.3.4
   # web only, for the path url strategy so deep links work
   flutter_web_plugins:
     sdk: flutter
