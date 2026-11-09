@@ -69,27 +69,26 @@ class PgpFormat implements CryptoFormat {
     }
 
     final message = EncryptedMessage(packets);
-    LiteralMessageInterface? opened;
 
-    if (keySlots.isNotEmpty) {
-      final keys = _matchingKeys(keySlots, opts.identities);
-      if (keys.isNotEmpty) {
-        opened = _attempt(() => message.decrypt(decryptionKeys: keys));
-      } else if (passwordSlots.isEmpty) {
-        throw const NoMatchingKey();
+    // the session key comes first, so a failure there is the wrong key or
+    // passphrase, and a failure past it is the data itself
+    final keys = keySlots.isEmpty
+        ? const <PrivateKeyInterface>[]
+        : _matchingKeys(keySlots, opts.identities);
+    final keyed = keys.isEmpty ? null : _openKeySlots(packets, keys);
+    var opened = keyed == null ? null : _open(message, keyed);
+    final passphrase = opts.passphrase ?? '';
+    if (opened == null && passphrase.isNotEmpty) {
+      for (final key in _openPasswordSlots(passwordSlots, passphrase)) {
+        opened = _open(message, key, guessed: true);
+        if (opened != null) break;
       }
     }
-
-    if (opened == null && passwordSlots.isNotEmpty) {
-      final passphrase = opts.passphrase;
-      if (passphrase == null || passphrase.isEmpty) {
-        throw const WrongPassphrase();
-      }
-      opened = _attempt(() => message.decrypt(passwords: [passphrase]));
-      if (opened == null) throw const WrongPassphrase();
+    if (opened == null) {
+      throw passwordSlots.isEmpty
+          ? const NoMatchingKey()
+          : const WrongPassphrase();
     }
-
-    if (opened == null) throw const NoMatchingKey();
 
     final literal = opened.literalData;
     opts.onMetadata?.call(
@@ -133,24 +132,61 @@ class PgpFormat implements CryptoFormat {
     }
   }
 
-  /// dart_pg throws `Error` subclasses on a bad session key, the same path as
-  /// a wrong passphrase, so the caller decides what it meant
-  static LiteralMessageInterface? _attempt(
-    LiteralMessageInterface Function() body,
+  /// null when none of [keys] opens a key slot
+  static SessionKeyInterface? _openKeySlots(
+    PacketListInterface packets,
+    List<PrivateKeyInterface> keys,
   ) {
     try {
-      return body();
-    } on Object catch (error) {
-      if (_looksTampered(error)) throw const DataTampered();
+      return EncryptedMessage.decryptSessionKey(packets, decryptionKeys: keys);
+    } on Object {
       return null;
     }
   }
 
-  static bool _looksTampered(Object error) {
-    final text = error.toString().toLowerCase();
-    return text.contains('modification detected') ||
-        text.contains('integrity') ||
-        text.contains('authentication tag');
+  /// the keys [passphrase] unwraps, slot by slot. a slot without AEAD checks
+  /// nothing, so a wrong passphrase can still decode to a real algorithm byte,
+  /// and only a key that fits it is worth trying
+  static Iterable<SessionKeyInterface> _openPasswordSlots(
+    Iterable<SymEncryptedSessionKeyPacket> slots,
+    String passphrase,
+  ) sync* {
+    for (final slot in slots) {
+      final SessionKeyInterface? key;
+      try {
+        key = slot.decrypt(passphrase).sessionKey;
+      } on Object {
+        continue;
+      }
+      if (key == null) continue;
+      final fits =
+          key.symmetric != SymmetricAlgorithm.plaintext &&
+          key.encryptionKey.length == key.symmetric.keySizeInByte;
+      if (slot.aead != null || fits) yield key;
+    }
+  }
+
+  /// null only for a [guessed] key the quick check turns down. a slot without
+  /// AEAD takes any passphrase without complaint, so a wrong one shows here
+  static LiteralMessageInterface? _open(
+    EncryptedMessageInterface message,
+    SessionKeyInterface key, {
+    bool guessed = false,
+  }) {
+    try {
+      return LiteralMessage(
+        message.encryptedPacket
+            .decrypt(key.encryptionKey, key.symmetric)
+            .packets!,
+      );
+    } on QuickCheckError {
+      if (guessed) return null;
+      throw const DataTampered();
+    } on UnsupportedError {
+      throw const UnsupportedFeature();
+    } on Object {
+      throw const DataTampered();
+    }
   }
 
   static List<PrivateKeyInterface> _matchingKeys(

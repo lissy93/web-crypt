@@ -62,6 +62,10 @@ ErrorMessage messageFor(Object error) {
       'Your keyring was changed in another window.',
       'It has been reloaded here, so try that again.',
     ),
+    UnsupportedFeature() => const ErrorMessage(
+      'This uses something web-crypt cannot read yet.',
+      'Such as bzip2 compression. Ask the sender to use the defaults.',
+    ),
     InputTooLarge(:final limitBytes) => ErrorMessage(
       'That is bigger than this build can handle.',
       'The limit here is ${formatBytes(limitBytes)}. The desktop app has no limit.',

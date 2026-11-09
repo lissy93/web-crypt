@@ -17,6 +17,14 @@ import '../type/encrypted_data_packet.dart';
 import '../type/packet_list.dart';
 import 'base_packet.dart';
 
+/// The session key does not fit a version 1 SEIPD packet. Its random prefix
+/// ends by repeating two octets, and a wrong key scrambles them, which is the
+/// quick check of RFC 9580 section 5.13.2.
+final class QuickCheckError extends Error {
+  @override
+  String toString() => 'Session key quick check failed.';
+}
+
 /// Symmetric Encrypted Integrity Protected Data (SEIPD) Packet - Type 18
 /// Author Nguyen Van Nguyen <nguyennv1981@gmail.com>
 final class SymEncryptedIntegrityProtectedDataPacket extends BasePacket
@@ -229,6 +237,11 @@ final class SymEncryptedIntegrityProtectedDataPacket extends BasePacket
             ),
           );
         final decrypted = cipher.process(encrypted);
+        final size = cipherSymmetric.blockSize;
+        if (decrypted[size - 2] != decrypted[size] ||
+            decrypted[size - 1] != decrypted[size + 1]) {
+          throw QuickCheckError();
+        }
         final realHash = decrypted.sublist(
           decrypted.length - HashAlgorithm.sha1.digestSize,
         );

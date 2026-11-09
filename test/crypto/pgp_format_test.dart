@@ -2,6 +2,9 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:dart_pg/dart_pg.dart';
+import 'package:dart_pg/src/enum/aead_algorithm.dart';
+import 'package:dart_pg/src/packet/key/session_key.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:web_crypt/core/errors/app_exception.dart';
 import 'package:web_crypt/core/utils/streams.dart';
@@ -278,6 +281,155 @@ void main() {
         throwsA(isA<RecipientFormatMismatch>()),
       );
     });
+  });
+
+  group('a wrong passphrase is not a changed message', () {
+    // GnuPG 2.2 `gpg -c` of "made by gpg -c\n": a version 4 SKESK with no
+    // session key of its own, so nothing checks the passphrase until the data
+    final symmetric = File(
+      'test/fixtures/pgp-symmetric-v4.gpg',
+    ).readAsBytesSync();
+    // GnuPG 2.4.4, an AEAD-wrapped session key over OCB chunks
+    final aead = File('test/fixtures/pgp-aead-chunked.gpg').readAsBytesSync();
+
+    Uint8List flipped(Uint8List bytes, int at) =>
+        Uint8List.fromList(bytes)..[at] ^= 0x01;
+
+    test('gpg -c opens with its passphrase', () async {
+      final opened = await decrypt(
+        symmetric,
+        const DecryptOptions(passphrase: 'right horse'),
+      );
+      expect(utf8.decode(opened), 'made by gpg -c\n');
+    });
+
+    test('a wrong passphrase on gpg -c says so', () async {
+      await expectLater(
+        decrypt(symmetric, const DecryptOptions(passphrase: 'wrong horse')),
+        throwsA(isA<WrongPassphrase>()),
+      );
+    });
+
+    test('a changed gpg -c message says so', () async {
+      // past the random prefix, so the quick check still passes
+      await expectLater(
+        decrypt(
+          flipped(symmetric, 50),
+          const DecryptOptions(passphrase: 'right horse'),
+        ),
+        throwsA(isA<DataTampered>()),
+      );
+    });
+
+    test('a wrong passphrase on an AEAD message says so', () async {
+      await expectLater(
+        decrypt(aead, const DecryptOptions(passphrase: 'wrong')),
+        throwsA(isA<WrongPassphrase>()),
+      );
+    });
+
+    test('a changed AEAD message says so', () async {
+      await expectLater(
+        decrypt(
+          flipped(aead, aead.length - 40),
+          const DecryptOptions(passphrase: 'chunk-test'),
+        ),
+        throwsA(isA<DataTampered>()),
+      );
+    });
+
+    test('a changed message to a key says so', () async {
+      final sealed = await encrypt(
+        pattern(4096),
+        EncryptOptions.forRecipients([recipientOf(alice)]),
+      );
+      await expectLater(
+        decrypt(
+          flipped(sealed, sealed.length - 100),
+          DecryptOptions(identities: [identityOf(alice)]),
+        ),
+        throwsA(isA<DataTampered>()),
+      );
+    });
+
+    test('bzip2 is called unsupported, not changed', () async {
+      await expectLater(
+        decrypt(
+          File('test/fixtures/pgp-bzip2.gpg').readAsBytesSync(),
+          const DecryptOptions(passphrase: 'right horse'),
+        ),
+        throwsA(isA<UnsupportedFeature>()),
+      );
+    });
+
+    // RFC 9580 lets a slot's cipher differ from the data's
+    test('a v6 slot may wrap a key for another cipher', () async {
+      final key = SessionKey.produceKey(SymmetricAlgorithm.aes256);
+      final sealed = PacketList([
+        SymEncryptedSessionKeyPacket.encryptSessionKey(
+          'pw',
+          symmetric: SymmetricAlgorithm.aes128,
+          aead: AeadAlgorithm.ocb,
+          sessionKey: key,
+        ),
+        SymEncryptedIntegrityProtectedDataPacket.encryptPackets(
+          key.encryptionKey,
+          PacketList([
+            LiteralDataPacket(Uint8List.fromList([1, 2, 3])),
+          ]),
+          aead: AeadAlgorithm.ocb,
+        ),
+      ]).encode();
+      expect(await decrypt(sealed, const DecryptOptions(passphrase: 'pw')), [
+        1,
+        2,
+        3,
+      ]);
+    });
+
+    test('each password slot is tried, not just the first', () async {
+      final key = SessionKey.produceKey(SymmetricAlgorithm.aes256);
+      final sealed = PacketList([
+        for (final password in ['first', 'second'])
+          SymEncryptedSessionKeyPacket.encryptSessionKey(
+            password,
+            sessionKey: key,
+          ),
+        SymEncryptedIntegrityProtectedDataPacket.encryptPackets(
+          key.encryptionKey,
+          PacketList([
+            LiteralDataPacket(Uint8List.fromList([4, 5, 6])),
+          ]),
+        ),
+      ]).encode();
+      for (final password in ['first', 'second']) {
+        expect(await decrypt(sealed, DecryptOptions(passphrase: password)), [
+          4,
+          5,
+          6,
+        ]);
+      }
+      await expectLater(
+        decrypt(sealed, const DecryptOptions(passphrase: 'third')),
+        throwsA(isA<WrongPassphrase>()),
+      );
+    });
+
+    test(
+      'wrong passphrases on our own messages never read as changed',
+      () async {
+        final sealed = await encrypt(
+          pattern(64),
+          const EncryptOptions.withPassphrase('right'),
+        );
+        for (var i = 0; i < 40; i++) {
+          await expectLater(
+            decrypt(sealed, DecryptOptions(passphrase: 'wrong $i')),
+            throwsA(isA<WrongPassphrase>()),
+          );
+        }
+      },
+    );
   });
 
   group('peeking', () {

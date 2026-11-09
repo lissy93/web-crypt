@@ -27,6 +27,11 @@ cryptographic primitive is modified.
   `verify` locates the second half of a signature by its stored length
 - `packet/signature.dart` treats a missing expiry as never expires and allows
   five minutes of clock skew on the creation time, as GnuPG does
+- `packet/sym_encrypted_integrity_protected_data.dart` runs the quick check on
+  a version 1 packet and throws `QuickCheckError`, so a wrong passphrase under
+  a version 4 SKESK, which checks nothing itself, is not mistaken for a changed
+  message at the MDC, as GnuPG reads it too. it only picks which error a
+  person at the keyboard sees, never what gets decrypted
 - `packet/padding.dart` writes tag 21 rather than tag 10, which GnuPG reported
   as an invalid marker packet
 - `cryptor/symmetric/buffered_cipher.dart` runs each block through a one-block

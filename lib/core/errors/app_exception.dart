@@ -58,6 +58,11 @@ class KeyringChanged extends AppException {
   const KeyringChanged();
 }
 
+/// opened fine, but holds something this build cannot read, such as bzip2
+class UnsupportedFeature extends AppException {
+  const UnsupportedFeature();
+}
+
 class InputTooLarge extends AppException {
   const InputTooLarge(this.limitBytes);
 
