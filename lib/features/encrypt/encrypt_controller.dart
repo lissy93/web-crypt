@@ -38,6 +38,7 @@ class FileJob {
       source.size > 0 ? (processed / source.size).clamp(0.0, 1.0) : null;
 
   FileJob copyWith({
+    PickedFile? source,
     JobStatus? status,
     String? outputName,
     String? outputPath,
@@ -45,7 +46,7 @@ class FileJob {
     int? processed,
   }) {
     return FileJob(
-      source: source,
+      source: source ?? this.source,
       status: status ?? this.status,
       outputName: outputName ?? this.outputName,
       outputPath: outputPath ?? this.outputPath,
@@ -281,9 +282,14 @@ class EncryptController extends Notifier<EncryptState> {
       options: options,
     );
     await _files.saveBytes(suggestedName: outputName, bytes: bytes);
+    // done for good, so the file needn't sit in memory until start over
     _updateJob(
       index,
-      (j) => j.copyWith(status: JobStatus.done, outputName: outputName),
+      (j) => j.copyWith(
+        source: j.source.withoutBytes,
+        status: JobStatus.done,
+        outputName: outputName,
+      ),
     );
   }
 
