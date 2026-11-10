@@ -12,6 +12,7 @@ import 'package:logging/logging.dart';
 import 'encrypt.dart';
 import 'header.dart';
 import 'keypair.dart';
+import 'pacer.dart';
 import 'passphrase_provider.dart';
 
 final Logger _logger = Logger('AgeDecrypt');
@@ -119,6 +120,7 @@ Stream<List<int>> _decryptPayload(Stream<List<int>> payload,
     Uint8List chunk = await chunkedIterator.readBytes(chunkWithMacSize);
     Uint8List? nextChunk;
     int chunkCounter = 0;
+    final pacer = Pacer();
     do {
       if (nextChunk != null) {
         chunk = nextChunk;
@@ -152,6 +154,7 @@ Stream<List<int>> _decryptPayload(Stream<List<int>> payload,
       }
       chunkCounter = chunkCounter + 1;
       yield decrypted;
+      if (pacer.due) await pacer.rest();
     } while (chunk.length == chunkWithMacSize);
   } finally {
     await chunkedIterator.cancel();

@@ -1,16 +1,14 @@
 library age.plugin;
 
 import 'dart:convert';
-import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:cryptography/cryptography.dart';
 import 'package:logging/logging.dart';
-import 'package:pointycastle/key_derivators/scrypt.dart';
-import 'package:pointycastle/pointycastle.dart';
 
 import '../keypair.dart';
 import '../passphrase_provider.dart';
+import '../scrypt.dart';
 import '../stanza.dart';
 import '../encoding.dart';
 import 'plugin.dart';
@@ -19,6 +17,8 @@ class ScryptPlugin extends AgePlugin {
   static final Logger _logger = Logger('ScryptPlugin');
   static const _info = 'age-encryption.org/v1/scrypt';
   static const _defaultWorkFactor = 18;
+  // 20 needs 1 GiB, and each step past it doubles that
+  static const _maxWorkFactor = 20;
 
   const ScryptPlugin();
 
@@ -54,8 +54,8 @@ class ScryptPlugin extends AgePlugin {
     if (body.length != 32) {
       throw Exception('Body size is incorrect!');
     }
-    if (workFactor > 22 || workFactor < 1) {
-      throw Exception('Work factor should be positive and less than 23!');
+    if (workFactor > _maxWorkFactor || workFactor < 1) {
+      throw Exception('Work factor should be between 1 and $_maxWorkFactor!');
     }
     return ScryptStanza(body, salt, workFactor, passphraseProvider);
   }
@@ -66,24 +66,25 @@ class ScryptPlugin extends AgePlugin {
       {PassphraseProvider passphraseProvider = const PassphraseProvider(),
       int workFactor = _defaultWorkFactor}) async {
     _logger.fine('Creating Scrypt stanza with workfactor=$_defaultWorkFactor');
-    final derivator = Scrypt();
     final actualWorkFactor = workFactor == -1 ? _defaultWorkFactor : workFactor;
-    if (actualWorkFactor > 22 || actualWorkFactor < 1) {
-      throw Exception('Work factor should be positive and less than 23!');
+    if (actualWorkFactor > _maxWorkFactor || actualWorkFactor < 1) {
+      throw Exception('Work factor should be between 1 and $_maxWorkFactor!');
     }
-    final parameters = ScryptParameters(pow(2, actualWorkFactor).toInt(), 8, 1,
-        32, Uint8List.fromList(_info.codeUnits + salt));
-    derivator.init(parameters);
-    _logger.fine('Scrypt derivator initialised');
     final passphrase = await passphraseProvider.passphrase();
     _logger.fine('Deriving key');
-    final derivedKey =
-        derivator.process(Uint8List.fromList(utf8.encode(passphrase)));
+    final derivedKey = await _deriveKey(passphrase, salt, actualWorkFactor);
     _logger.fine('Key derived');
-    final wrappedKey =
-        await AgeStanza.wrap(symmetricFileKey, SecretKey(derivedKey));
+    final wrappedKey = await AgeStanza.wrap(symmetricFileKey, derivedKey);
     return ScryptStanza(wrappedKey, salt, actualWorkFactor, passphraseProvider);
   }
+}
+
+Future<SecretKey> _deriveKey(
+    String passphrase, List<int> salt, int workFactor) async {
+  final key = await scrypt(
+      utf8.encode(passphrase), [...ScryptPlugin._info.codeUnits, ...salt],
+      n: 1 << workFactor);
+  return SecretKey(key);
 }
 
 class ScryptStanza extends AgeStanza {
@@ -98,14 +99,9 @@ class ScryptStanza extends AgeStanza {
 
   @override
   Future<Uint8List> decryptedFileKey(AgeKeyPair? keyPair) async {
-    final derivator = Scrypt();
-    final parameters = ScryptParameters(pow(2, _workFactor).toInt(), 8, 1, 32,
-        Uint8List.fromList(ScryptPlugin._info.codeUnits + _salt));
-    derivator.init(parameters);
     final passphrase = await _passphraseProvider.passphrase();
-    final derivedKey =
-        derivator.process(Uint8List.fromList(utf8.encode(passphrase)));
-    return AgeStanza.unwrap(_wrappedKey, SecretKey(derivedKey));
+    final derivedKey = await _deriveKey(passphrase, _salt, _workFactor);
+    return AgeStanza.unwrap(_wrappedKey, derivedKey);
   }
 
   @override

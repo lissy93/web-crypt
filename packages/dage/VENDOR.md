@@ -9,9 +9,9 @@ Cut from `github.com/Producement/dage` at tag `v1.0.10`, commit
 `12c14fdfd21008e6a30020d1174e0edee3b419f3`. Upstream drift since then is a plain
 diff against that commit.
 
-Upstream stopped in February 2024 and does not compile for web. No
-cryptographic primitive is modified: those still come from `cryptography` and
-`pointycastle`.
+Upstream stopped in February 2024 and does not compile for web. The
+primitives still come from `cryptography` and `pointycastle`, except scrypt's
+mixing step, which is our own and checked against RFC 7914.
 
 ## changed
 
@@ -21,6 +21,13 @@ cryptographic primitive is modified: those still come from `cryptography` and
 - `src/plugin/scrypt.dart` derives the scrypt key from UTF-8 rather than
   `codeUnits`, so a non-ASCII passphrase produces a file other age
   implementations can open
+- `src/scrypt.dart` replaces pointycastle's scrypt, which ran in one go and
+  froze the web page for seconds. this one is as quick or quicker, and pauses
+  as it goes
+- `src/plugin/scrypt.dart` caps the work factor at 20, where pointycastle
+  stopped too. upstream allowed 22, which asks for 4 GiB
+- `src/pacer.dart` gives the page a turn during scrypt and between payload
+  chunks, so the web app keeps painting through a long job
 - `src/stanza.dart` adds `StanzaUnwrapException`, which separates a wrong
   passphrase from a tampered payload
 - `src/passphrase_provider.dart` takes the passphrase from the caller instead

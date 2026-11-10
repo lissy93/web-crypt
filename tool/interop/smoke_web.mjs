@@ -1,5 +1,5 @@
 // drives the built web app in a headless browser: loads every route, reads
-// the accessible labels, and encrypts a message for real.
+// the accessible labels, encrypts a message, and opens one from the age CLI.
 //
 //     node tool/interop/smoke_web.mjs build/web
 //     WEB_CRYPT_BROWSER=firefox node tool/interop/smoke_web.mjs build/web
@@ -15,6 +15,16 @@ const SERVED = process.env.WEB_CRYPT_ORIGIN;
 const ORIGIN = SERVED ?? `http://127.0.0.1:${PORT}`;
 const SECRET = 'meet me at the usual place';
 const PASSPHRASE = 'correct horse battery staple';
+const DROP_HINT = 'Paste an encrypted message, or drop a file anywhere here';
+
+// made by the real age CLI, so the browser's scrypt is checked against it
+const AGE_CLI_MESSAGE = `-----BEGIN AGE ENCRYPTED FILE-----
+YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IHNjcnlwdCBzc0ppV3d4d0d1MjVuRWpX
+dTZJZnh3IDE4CitSOGFxajNvK1dzK1JFYlN5c3JCem9HalljMFMwSjd6SEcxWEsr
+TS96SUkKLS0tIE1QNlllbDZaVUR1VU1pY1h2dUhuVUh2MW0zdDllOXlRaUh3ZUU2
+NTN4akEK6LqZhrm2czH056tVyIOjfSdn6OpsihDyfSUgWBAorSWZMUiC2CqpD+Ne
+Hc/WzGBQbUdk
+-----END AGE ENCRYPTED FILE-----`;
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -123,6 +133,25 @@ async function fill(page, selector, text) {
   await page.keyboard.type(text);
 }
 
+// sent as text, like a paste, since typing armor trips Flutter's key handling
+async function paste(page, selector, text) {
+  await page.click(selector);
+  for (const char of text) await page.keyboard.sendCharacter(char);
+}
+
+// the longest gap between ticks, which is how long the page stopped painting
+async function watchStalls(page) {
+  await page.evaluate(() => {
+    let last = performance.now();
+    window.longestStall = 0;
+    setInterval(() => {
+      const now = performance.now();
+      window.longestStall = Math.max(window.longestStall, now - last);
+      last = now;
+    }, 20);
+  });
+}
+
 async function findLabel(page, predicate, timeoutMs = 20000) {
   const deadline = Date.now() + timeoutMs;
   let seen = [];
@@ -216,6 +245,7 @@ allErrors.push(
     await fill(page, messageField, SECRET);
     await fill(page, 'input[aria-label="Passphrase"]', PASSPHRASE);
     await fill(page, 'input[aria-label="Passphrase again"]', PASSPHRASE);
+    await watchStalls(page);
     await pressButton(page, 'Encrypt');
 
     const result = await findLabel(page, (label) =>
@@ -226,13 +256,35 @@ allErrors.push(
     } else {
       fail('encrypting in the browser produced no output');
     }
+
+    const stall = Math.round(await page.evaluate(() => window.longestStall));
+    if (stall < 2000) {
+      pass(`the page kept painting while it encrypted, at most ${stall} ms`);
+    } else {
+      fail(`the page froze for ${stall} ms while it encrypted`);
+    }
+  })),
+);
+
+allErrors.push(
+  ...(await onRoute('/decrypt', async (page) => {
+    await enableSemantics(page);
+    await paste(page, `textarea[aria-label="${DROP_HINT}"]`, AGE_CLI_MESSAGE);
+    await fill(page, 'input[aria-label="Passphrase"]', PASSPHRASE);
+    await pressButton(page, 'Decrypt');
+
+    if (await findLabel(page, (label) => label === 'Decrypted')) {
+      pass('a message from the age CLI decrypts in the browser');
+    } else {
+      fail('the age CLI message did not decrypt in the browser');
+    }
   })),
 );
 
 // matched on something only that screen says, since the heading merges into
 // its parent semantics node along with the subtitle
 for (const [route, marker] of [
-  ['/decrypt', 'Paste an encrypted message, or drop a file anywhere here'],
+  ['/decrypt', DROP_HINT],
   ['/keys', 'No keys yet'],
   ['/settings', 'Appearance'],
 ]) {
