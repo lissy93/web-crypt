@@ -5,8 +5,12 @@
 
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>web-crypt · Encrypt and decrypt with age and PGP</title>
   <meta name="description" content="Encrypt and decrypt messages and files with age and OpenPGP. Runs entirely in your browser, makes no network requests, and stores nothing on a server.">
-  <meta name="theme-color" content="#1e5f74" media="(prefers-color-scheme: light)">
+  <meta name="author" content="Alicia Sykes">
+  <meta name="application-name" content="web-crypt">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#fbfbfa" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#191a19" media="(prefers-color-scheme: dark)">
   <meta name="referrer" content="no-referrer">
   <meta name="robots" content="index, follow">
@@ -14,14 +18,42 @@
   <!-- same policy the deploy configs send, for hosts without header support -->
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' blob: data:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'none'">
 
-  <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="web-crypt">
-  <link rel="apple-touch-icon" href="icons/Icon-192.png">
-  <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="icon" href="favicon.ico" sizes="32x32">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <link rel="manifest" href="manifest.json">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="web-crypt">
 
-  <title>web-crypt</title>
+  <!-- link previews need absolute urls, so these name the public instance -->
+  <link rel="canonical" href="https://web-crypt.as93.net/">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="web-crypt">
+  <meta property="og:url" content="https://web-crypt.as93.net/">
+  <meta property="og:title" content="web-crypt · Encrypt and decrypt with age and PGP">
+  <meta property="og:description" content="Encrypt and decrypt messages and files with age and OpenPGP, all on your own device. No accounts, no servers, no network requests.">
+  <meta property="og:image" content="https://web-crypt.as93.net/banner.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="The web-crypt logo and name, beside its Encrypt screen">
+  <meta name="twitter:card" content="summary_large_image">
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "name": "web-crypt",
+      "url": "https://web-crypt.as93.net/",
+      "description": "Encrypt and decrypt messages and files with age and OpenPGP, all on your own device.",
+      "image": "https://web-crypt.as93.net/banner.png",
+      "applicationCategory": "SecurityApplication",
+      "operatingSystem": "Web, Linux, macOS, Windows",
+      "isAccessibleForFree": true,
+      "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+      "license": "https://opensource.org/licenses/MIT",
+      "author": { "@type": "Person", "name": "Alicia Sykes", "url": "https://aliciasykes.com" }
+    }
+  </script>
 
   <style>
     :root { color-scheme: light dark; }
@@ -29,11 +61,8 @@
       margin: 0;
       padding: 0;
       height: 100%;
-      background: #fbfbfa;
+      background: light-dark(#fbfbfa, #191a19);
       font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-    }
-    @media (prefers-color-scheme: dark) {
-      html, body { background: #191a19; }
     }
     #boot {
       position: fixed;
@@ -42,37 +71,62 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      gap: 18px;
-      color: #56564f;
+      gap: 6px;
+      color: light-dark(#56564f, #b2b3ae);
       font-size: 14px;
+      text-align: center;
       transition: opacity 200ms ease;
     }
-    @media (prefers-color-scheme: dark) { #boot { color: #b2b3ae; } }
-    #boot .mark {
-      width: 34px;
-      height: 34px;
-      border-radius: 8px;
-      border: 2px solid currentColor;
-      opacity: 0.35;
-      animation: pulse 1.4s ease-in-out infinite;
+    #boot h1 {
+      margin: 14px 0 0;
+      font-size: 20px;
+      font-weight: 600;
+      letter-spacing: -0.2px;
+      color: light-dark(#1a1a18, #ecece8);
+    }
+    #boot p { margin: 0; max-width: 32em; padding: 0 24px; }
+    .logo {
+      width: 56px;
+      height: 56px;
+      animation: pulse 1.6s ease-in-out infinite;
+    }
+    .tile { fill: light-dark(#1e5f74, #6fb3c6); }
+    .ink {
+      fill: light-dark(#fff, #10221e);
+      stroke: light-dark(#fff, #10221e);
+      stroke-width: 1.2;
+      stroke-linejoin: round;
     }
     @keyframes pulse {
-      0%, 100% { opacity: 0.2; }
-      50% { opacity: 0.55; }
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.6; }
     }
     @media (prefers-reduced-motion: reduce) {
-      #boot .mark { animation: none; }
+      .logo { animation: none; }
     }
   </style>
-</head>
-<body>
-  <div id="boot" role="status" aria-live="polite">
-    <div class="mark"></div>
-    <div>Starting web-crypt&hellip;</div>
-    <noscript>web-crypt needs JavaScript. Everything runs in your browser, so there is no server to fall back to.</noscript>
-  </div>
+  <noscript><style>#boot [role=status], .logo { display: none; }</style></noscript>
 
   <script src="boot.js"></script>
+</head>
+<body>
+  <main id="boot">
+    <svg class="logo" viewBox="0 0 24 24" aria-hidden="true">
+      <rect class="tile" width="24" height="24" rx="5.3"/>
+      <g transform="translate(12 12) scale(0.72) translate(-12 -12)">
+        <path class="ink" d="M12 2.6 19 5.3v5.6c0 4.6-2.9 8.6-7 10.5-4.1-1.9-7-5.9-7-10.5V5.3z"/>
+        <circle class="tile" cx="12" cy="10.3" r="2.15"/>
+        <path class="tile" d="M11.25 11.4h1.5l.75 4.3h-3z"/>
+      </g>
+    </svg>
+    <h1>web-crypt</h1>
+    <p role="status">Starting&hellip;</p>
+    <noscript>
+      <p>Encrypt and decrypt messages and files with age and OpenPGP, all on your own device.</p>
+      <p>It needs JavaScript. Everything runs in your browser, so there is no server to fall back to.</p>
+    </noscript>
+  </main>
+
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

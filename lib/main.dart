@@ -3,9 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:web_crypt/app/app.dart';
+import 'package:web_crypt/app/browser_stub.dart'
+    if (dart.library.js_interop) 'package:web_crypt/app/browser_web.dart';
 import 'package:web_crypt/app/providers.dart';
-import 'package:web_crypt/app/url_strategy_stub.dart'
-    if (dart.library.js_interop) 'package:web_crypt/app/url_strategy_web.dart';
 import 'package:web_crypt/core/utils/log.dart';
 import 'package:web_crypt/services/storage_service.dart';
 

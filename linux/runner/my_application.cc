@@ -45,14 +45,29 @@ static void my_application_activate(GApplication* application) {
   if (use_header_bar) {
     GtkHeaderBar* header_bar = GTK_HEADER_BAR(gtk_header_bar_new());
     gtk_widget_show(GTK_WIDGET(header_bar));
-    gtk_header_bar_set_title(header_bar, "web_crypt");
+    gtk_header_bar_set_title(header_bar, "web-crypt");
     gtk_header_bar_set_show_close_button(header_bar, TRUE);
     gtk_window_set_titlebar(window, GTK_WIDGET(header_bar));
   } else {
-    gtk_window_set_title(window, "web_crypt");
+    gtk_window_set_title(window, "web-crypt");
   }
 
   gtk_window_set_default_size(window, 1280, 720);
+
+  // the narrowest layout the app is designed for
+  GdkGeometry hints = {};
+  hints.min_width = 360;
+  hints.min_height = 480;
+  gtk_window_set_geometry_hints(window, nullptr, &hints, GDK_HINT_MIN_SIZE);
+
+  // CMakeLists.txt installs the icon beside flutter_assets
+  g_autofree gchar* exe = g_file_read_link("/proc/self/exe", nullptr);
+  if (exe != nullptr) {
+    g_autofree gchar* dir = g_path_get_dirname(exe);
+    g_autofree gchar* icon =
+        g_build_filename(dir, "data", "app_icon.png", nullptr);
+    gtk_window_set_icon_from_file(window, icon, nullptr);
+  }
 
   g_autoptr(FlDartProject) project = fl_dart_project_new();
   fl_dart_project_set_dart_entrypoint_arguments(

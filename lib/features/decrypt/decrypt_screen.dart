@@ -37,6 +37,21 @@ class _DecryptScreenState extends ConsumerState<DecryptScreen> {
   bool _dragging = false;
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _takeOpenedFile());
+  }
+
+  /// a file the OS opened the app with goes in as if it was dropped here
+  void _takeOpenedFile() {
+    if (!mounted || ref.read(decryptProvider).busy) return;
+    final file = ref.read(openedFileProvider.notifier).take();
+    if (file == null) return;
+    _input.clear();
+    ref.read(decryptProvider.notifier).onFile(file);
+  }
+
+  @override
   void dispose() {
     _input.clear();
     _passphrase.clear();
@@ -68,6 +83,13 @@ class _DecryptScreenState extends ConsumerState<DecryptScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(openedFileProvider, (_, file) {
+      if (file != null) _takeOpenedFile();
+    });
+    // one opened mid-load waits for that to finish
+    ref.listen(decryptProvider.select((s) => s.busy), (_, busy) {
+      if (!busy) _takeOpenedFile();
+    });
     final state = ref.watch(decryptProvider);
     final controller = ref.read(decryptProvider.notifier);
     // held keys are tried on the first Decrypt, so only ask after that

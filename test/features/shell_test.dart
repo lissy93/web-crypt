@@ -1,9 +1,12 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:web_crypt/app/app.dart';
 import 'package:web_crypt/app/providers.dart';
 import 'package:web_crypt/app/theme/spacing.dart';
+import 'package:web_crypt/services/file_service.dart';
 
 import '../support/harness.dart';
 
@@ -93,6 +96,72 @@ void main() {
     await tester.tap(find.text('Encrypt').first);
     await tester.pumpAndSettle();
     expect(find.text('Type or paste your message'), findsOneWidget);
+  });
+
+  testWidgets('each page names itself in the title', (tester) async {
+    await pumpApp(tester);
+    String title() => tester.widget<Title>(find.byType(Title).last).title;
+    expect(title(), 'Encrypt · web-crypt');
+
+    await tester.tap(find.text('Keys').first);
+    await tester.pumpAndSettle();
+    expect(title(), 'Keys · web-crypt');
+
+    await tester.tap(find.byIcon(Icons.settings_outlined).first);
+    await tester.pumpAndSettle();
+    expect(title(), 'Settings · web-crypt');
+  });
+
+  group('a file opened from the OS', () {
+    final bytes = File('test/fixtures/pgp-symmetric-v4.gpg').readAsBytesSync();
+    final file = PickedFile(name: 'note.gpg', size: bytes.length, bytes: bytes);
+    const asked = 'The one used when this was encrypted.';
+
+    void open(WidgetTester tester, [PickedFile? picked]) {
+      final app = tester.element(find.byType(WebCryptApp));
+      ProviderScope.containerOf(
+        app,
+      ).read(openedFileProvider.notifier).open(picked ?? file);
+    }
+
+    testWidgets('waits for Decrypt to open', (tester) async {
+      await pumpApp(tester);
+      open(tester);
+      await tester.pumpAndSettle();
+      expect(find.text(asked), findsNothing);
+
+      await tester.tap(find.text('Decrypt').first);
+      await tester.pumpAndSettle();
+      expect(find.text('note.gpg'), findsOneWidget);
+      expect(find.text(asked), findsOneWidget);
+    });
+
+    testWidgets('goes straight in when Decrypt is showing', (tester) async {
+      await pumpApp(tester);
+      await tester.tap(find.text('Decrypt').first);
+      await tester.pumpAndSettle();
+
+      open(tester);
+      await tester.pumpAndSettle();
+      expect(find.text('note.gpg'), findsOneWidget);
+      expect(find.text(asked), findsOneWidget);
+    });
+
+    testWidgets('waits for the last file to finish loading', (tester) async {
+      await pumpApp(tester);
+      await tester.tap(find.text('Decrypt').first);
+      await tester.pumpAndSettle();
+
+      open(tester);
+      final later = PickedFile(
+        name: 'later.gpg',
+        size: bytes.length,
+        bytes: bytes,
+      );
+      open(tester, later);
+      await tester.pumpAndSettle();
+      expect(find.text('later.gpg'), findsOneWidget);
+    });
   });
 
   testWidgets('content is centred and capped in width', (tester) async {
