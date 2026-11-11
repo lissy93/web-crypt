@@ -60,7 +60,7 @@ Encryption can't help if your device is already compromised. A dodgy browser ext
 ### Limitations
 
 - On web, large PGP files and PGP key generation freeze the tab until they finish, because browsers can't run them in the background. age streams fine, and desktop runs everything off the main thread
-- Files over 200 MB get a warning on web, and 1 GB is the cap. Desktop has no cap for age
+- Files over 200 MB get a warning on web, and 1 GB is the cap. Desktop has no cap for age, but a PGP message that unpacks past 1 GB is refused everywhere
 - It checks signatures on PGP messages you decrypt, but can't sign them yet
 - Nothing is cached for offline use
 

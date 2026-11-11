@@ -41,6 +41,9 @@ class PickedFile {
     if (source == null) throw const FileAccessFailed();
     return platform.readFileHead(source, count);
   }
+
+  /// the same file, minus its contents, for once they're no longer needed
+  PickedFile get withoutBytes => PickedFile(name: name, size: size, path: path);
 }
 
 class FileService {

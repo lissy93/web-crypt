@@ -35,4 +35,7 @@ final class Config {
       CompressionAlgorithm.uncompressed;
 
   static AeadAlgorithm preferredAead = AeadAlgorithm.ocb;
+
+  /// the most a compressed packet may unpack to, 1 GiB
+  static int maxDecompressedSize = 1 << 30;
 }
