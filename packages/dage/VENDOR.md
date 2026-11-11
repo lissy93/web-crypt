@@ -24,6 +24,8 @@ mixing step, which is our own and checked against RFC 7914.
 - `src/scrypt.dart` replaces pointycastle's scrypt, which ran in one go and
   froze the web page for seconds. this one is as quick or quicker, and pauses
   as it goes
+- `src/salsa_words.dart` and its web twin pick the int list scrypt mixes in,
+  unsigned on the VM and signed in browsers, as each runs faster on its own
 - `src/plugin/scrypt.dart` caps the work factor at 20, where pointycastle
   stopped too. upstream allowed 22, which asks for 4 GiB
 - `src/pacer.dart` gives the page a turn during scrypt and between payload

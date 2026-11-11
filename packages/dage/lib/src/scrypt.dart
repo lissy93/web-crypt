@@ -6,6 +6,7 @@ import 'package:pointycastle/key_derivators/pbkdf2.dart';
 import 'package:pointycastle/macs/hmac.dart';
 
 import 'pacer.dart';
+import 'salsa_words.dart' if (dart.library.js_interop) 'salsa_words_web.dart';
 
 /// scrypt from RFC 7914, quick enough for the web and pausing as it goes
 Future<Uint8List> scrypt(
@@ -51,9 +52,9 @@ class _Mixer {
   final Uint32List _v;
   final Uint32List _x;
   final Uint32List _y;
-  // signed, which browsers keep as plain ints and run noticeably faster
-  final _t = Int32List(16);
-  final _s = Int32List(16);
+  // which int list salsa runs fastest on depends on the platform
+  final _t = SalsaWords(16);
+  final _s = SalsaWords(16);
   final _pacer = Pacer();
 
   Future<void> mix(Uint32List block) async {
@@ -110,7 +111,7 @@ class _Mixer {
 
 @pragma('vm:prefer-inline')
 @pragma('dart2js:tryInline')
-void _quarter(Int32List s, int a, int b, int c, int d) {
+void _quarter(SalsaWords s, int a, int b, int c, int d) {
   s[b] ^= _rotl(s[a] + s[d], 7);
   s[c] ^= _rotl(s[b] + s[a], 9);
   s[d] ^= _rotl(s[c] + s[b], 13);
