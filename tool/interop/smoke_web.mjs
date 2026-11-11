@@ -128,14 +128,20 @@ async function pressButton(page, name) {
   }, name);
 }
 
-async function fill(page, selector, text) {
+// a field can turn up a frame or two after whatever revealed it
+async function focus(page, selector) {
+  await page.waitForSelector(selector, { timeout: 20_000 });
   await page.click(selector);
+}
+
+async function fill(page, selector, text) {
+  await focus(page, selector);
   await page.keyboard.type(text);
 }
 
 // sent as text, like a paste, since typing armor trips Flutter's key handling
 async function paste(page, selector, text) {
-  await page.click(selector);
+  await focus(page, selector);
   for (const char of text) await page.keyboard.sendCharacter(char);
 }
 
