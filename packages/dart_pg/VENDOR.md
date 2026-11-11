@@ -55,6 +55,10 @@ cryptographic primitive is modified.
   never enable it, so GnuPG 2.2 can read a message encrypted to a web-crypt key
 - `enum/symmetric_algorithm.dart` orders `preferredSymmetrics` strongest
   first, so recipient mode lands on AES-256
+- `packet/compressed_data.dart` unpacks into a buffer that stops at
+  `Config.maxDecompressedSize`, 1 GiB, and refuses compressed data nested in
+  compressed data, as does `packet_list.dart` for two side by side, so a small
+  message can't unpack until memory runs out
 - the barrel exports the `type/` interfaces the public API returns
 - `archive` added, `faker` dropped, `lints` and `test` bumped
 - upstream `test/`, `example/`, `README.md`, `CHANGELOG.md` and `pubspec.lock`

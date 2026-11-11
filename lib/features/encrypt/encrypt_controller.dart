@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:web_crypt/app/providers.dart';
@@ -18,7 +17,6 @@ class FileJob {
     this.status = JobStatus.waiting,
     this.outputName,
     this.outputPath,
-    this.outputBytes,
     this.error,
     this.processed = 0,
   });
@@ -32,7 +30,6 @@ class FileJob {
 
   /// set on desktop once written, null on web where the browser downloads it
   final String? outputPath;
-  final Uint8List? outputBytes;
   final Object? error;
 
   /// null when the size is unknown, which is how the UI picks between a bar
@@ -41,19 +38,18 @@ class FileJob {
       source.size > 0 ? (processed / source.size).clamp(0.0, 1.0) : null;
 
   FileJob copyWith({
+    PickedFile? source,
     JobStatus? status,
     String? outputName,
     String? outputPath,
-    Uint8List? outputBytes,
     Object? error,
     int? processed,
   }) {
     return FileJob(
-      source: source,
+      source: source ?? this.source,
       status: status ?? this.status,
       outputName: outputName ?? this.outputName,
       outputPath: outputPath ?? this.outputPath,
-      outputBytes: outputBytes ?? this.outputBytes,
       error: error,
       processed: processed ?? this.processed,
     );
@@ -286,12 +282,13 @@ class EncryptController extends Notifier<EncryptState> {
       options: options,
     );
     await _files.saveBytes(suggestedName: outputName, bytes: bytes);
+    // done for good, so the file needn't sit in memory until start over
     _updateJob(
       index,
       (j) => j.copyWith(
+        source: j.source.withoutBytes,
         status: JobStatus.done,
         outputName: outputName,
-        outputBytes: bytes,
       ),
     );
   }

@@ -6,6 +6,7 @@ import 'package:async/async.dart';
 
 import 'header.dart';
 import 'keypair.dart';
+import 'pacer.dart';
 import 'passphrase_provider.dart';
 import 'plugin/plugin.dart';
 import 'random.dart';
@@ -80,6 +81,7 @@ Stream<List<int>> _encryptPayload(Stream<List<int>> payload,
       info: 'payload'.codeUnits);
   final encryptionAlgorithm = Chacha20.poly1305Aead();
   final chunkedIterator = ChunkedStreamReader(payload);
+  final pacer = Pacer();
   var chunkCounter = 0;
   try {
     // Reads one chunk ahead, so a full last chunk is not followed by an empty one.
@@ -96,6 +98,7 @@ Stream<List<int>> _encryptPayload(Stream<List<int>> payload,
       chunkCounter = chunkCounter + 1;
       yield secretBox.concatenation(nonce: false);
       if (isFinal) break;
+      if (pacer.due) await pacer.rest();
       chunk = next;
     }
   } finally {

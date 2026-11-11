@@ -13,7 +13,8 @@ class HeadedStream {
 /// reads up to [size] bytes for sniffing, and still hands back a stream that
 /// starts from byte zero
 Future<HeadedStream> peekHead(Stream<List<int>> input, int size) async {
-  final head = BytesBuilder(copy: false);
+  // copied, it is small and should not hold on to the input
+  final head = BytesBuilder();
   final queue = StreamController<List<int>>();
   final completer = Completer<void>();
   var forwarding = false;
@@ -29,8 +30,10 @@ Future<HeadedStream> peekHead(Stream<List<int>> input, int size) async {
       if (chunk.length <= need) {
         head.add(chunk);
       } else {
-        head.add(chunk.sublist(0, need));
-        queue.add(chunk.sublist(need));
+        final bytes = chunk is Uint8List ? chunk : Uint8List.fromList(chunk);
+        head.add(Uint8List.sublistView(bytes, 0, need));
+        // a view, as the rest can be nearly the whole input
+        queue.add(Uint8List.sublistView(bytes, need));
       }
       if (head.length >= size) {
         forwarding = true;

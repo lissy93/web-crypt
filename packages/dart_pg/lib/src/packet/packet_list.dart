@@ -30,6 +30,11 @@ final class PacketList extends ListBase<PacketInterface>
     while (offset < bytes.length) {
       final reader = PacketReader.read(bytes, offset);
       offset = reader.offset;
+      // a message holds one at most, and each would unpack in full
+      if (reader.type == PacketType.compressedData &&
+          packets.any((packet) => packet is CompressedDataPacket)) {
+        throw UnsupportedError('Only one compressed data packet is supported.');
+      }
       final packet = switch (reader.type) {
         PacketType.publicKeyEncryptedSessionKey =>
           PublicKeyEncryptedSessionKeyPacket.fromBytes(

@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:dart_pg/dart_pg.dart';
@@ -594,6 +595,72 @@ void main() {
         ]),
       ).armor();
       expect((await gpgSignedFor(claimed)).verdict, SignatureVerdict.invalid);
+    });
+  });
+
+  group('compressed messages', () {
+    Uint8List sealedAround(List<PacketInterface> packets) {
+      final key = SessionKey.produceKey(SymmetricAlgorithm.aes256);
+      return PacketList([
+        SymEncryptedSessionKeyPacket.encryptSessionKey('pw', sessionKey: key),
+        SymEncryptedIntegrityProtectedDataPacket.encryptPackets(
+          key.encryptionKey,
+          PacketList(packets),
+        ),
+      ]).encode();
+    }
+
+    PacketInterface squashed(
+      PacketInterface packet, [
+      CompressionAlgorithm algorithm = CompressionAlgorithm.zlib,
+    ]) => CompressedDataPacket.fromPacketList(PacketList([packet]), algorithm);
+
+    Future<Uint8List> open(Uint8List sealed) =>
+        decrypt(sealed, const DecryptOptions(passphrase: 'pw'));
+
+    test('zip and zlib both open, squeezable or not', () async {
+      final random = Random(7);
+      final noise = Uint8List.fromList(
+        List.generate(300000, (_) => random.nextInt(256)),
+      );
+      for (final algorithm in [
+        CompressionAlgorithm.zip,
+        CompressionAlgorithm.zlib,
+      ]) {
+        for (final payload in [pattern(300000), noise]) {
+          final packed = squashed(LiteralDataPacket(payload), algorithm);
+          expect(await open(sealedAround([packed])), payload);
+        }
+      }
+    });
+
+    test('the limit is on what it unpacks to', () async {
+      final literal = LiteralDataPacket(Uint8List(4096));
+      final sealed = sealedAround([squashed(literal)]);
+      final unpacked = PacketList([literal]).encode().length;
+      final limit = Config.maxDecompressedSize;
+      addTearDown(() => Config.maxDecompressedSize = limit);
+
+      Config.maxDecompressedSize = unpacked;
+      expect(await open(sealed), Uint8List(4096));
+      Config.maxDecompressedSize = unpacked - 1;
+      await expectLater(open(sealed), throwsA(isA<UnsupportedFeature>()));
+    });
+
+    test('one compressed inside another is refused', () async {
+      final inner = squashed(LiteralDataPacket(pattern(64)));
+      await expectLater(
+        open(sealedAround([squashed(inner)])),
+        throwsA(isA<UnsupportedFeature>()),
+      );
+    });
+
+    test('more than one side by side is refused', () async {
+      final packed = squashed(LiteralDataPacket(pattern(64)));
+      await expectLater(
+        open(sealedAround([packed, packed])),
+        throwsA(isA<UnsupportedFeature>()),
+      );
     });
   });
 

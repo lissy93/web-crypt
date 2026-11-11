@@ -19,6 +19,10 @@ Future<List<PickedFile>> pickFiles({bool allowMultiple = true}) async {
     throw const FileAccessFailed();
   }
   if (result == null) return const [];
+  // the picker keeps a second copy behind a blob url, which is never used
+  for (final file in result.files) {
+    if (file.path case final url?) web.URL.revokeObjectURL(url);
+  }
   return [
     for (final file in result.files)
       if (file.bytes != null)

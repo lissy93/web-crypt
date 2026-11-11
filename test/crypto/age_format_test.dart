@@ -92,6 +92,18 @@ void main() {
       },
     );
 
+    test('a work factor that needs gigabytes is refused', () async {
+      final sealed = await encrypt(
+        Uint8List.fromList(utf8.encode('secret')),
+        const EncryptOptions.withPassphrase('pw'),
+      );
+      final costly = latin1.decode(sealed).replaceFirst(' 18\n', ' 21\n');
+      await expectLater(
+        decrypt(latin1.encode(costly), const DecryptOptions(passphrase: 'pw')),
+        throwsA(isA<CryptoFailed>()),
+      );
+    });
+
     test('an empty passphrase is refused at encrypt time', () async {
       await expectLater(
         encrypt(
