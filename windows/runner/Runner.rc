@@ -89,13 +89,13 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "net.as93" "\0"
-            VALUE "FileDescription", "web_crypt" "\0"
+            VALUE "CompanyName", "Alicia Sykes" "\0"
+            VALUE "FileDescription", "web-crypt" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "web_crypt" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2026 net.as93. All rights reserved." "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 Alicia Sykes. MIT licensed." "\0"
             VALUE "OriginalFilename", "web_crypt.exe" "\0"
-            VALUE "ProductName", "web_crypt" "\0"
+            VALUE "ProductName", "web-crypt" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

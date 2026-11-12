@@ -1,6 +1,8 @@
 <h1 align="center">web-crypt</h1>
 <p align="center">
-  🔐 <i>Encrypt and decrypt messages and files with age and PGP, all on your own device</i>
+  <img width="80" src="web/favicon.svg" alt="" /><br />
+  🔐 <i>Encrypt and decrypt messages and files with age and PGP, all on your own device</i><br />
+  <b>🌐 <a href="https://web-crypt.as93.net">web-crypt.as93.net</a></b>
 </p>
 
 <p align="center">
@@ -19,6 +21,7 @@ web-crypt encrypts and decrypts text and files with [age](https://age-encryption
 - Generate, import and export age and PGP keypairs
 - Private keys live in a keyring that's itself an age file, locked with your master password
 - Runs on web and natively on Linux, macOS and Windows
+- Installs as an app from Chrome or Edge, which can then open `.age`, `.gpg` and `.asc` files
 - Light and dark mode, following your system
 
 <details>
@@ -103,6 +106,8 @@ flutter test integration_test -d linux    # the full flows on a real device
 ```
 
 All the crypto lives in `lib/crypto/`, and the UI only reaches it through `crypto_service.dart`. The age and PGP code comes from vendored forks of `dage` and `dart_pg`, in `packages/`.
+
+Every icon, the link preview and the install screenshots come from `node tool/interop/brand.mjs`. The logo is also drawn by `app_logo.dart` in the app and the splash in `web/index.html`, so change all three together.
 
 ---
 

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:web_crypt/app/shell.dart';
+import 'package:web_crypt/app/theme/app_colors.dart';
 import 'package:web_crypt/app/theme/spacing.dart';
 import 'package:web_crypt/features/decrypt/decrypt_screen.dart';
 import 'package:web_crypt/features/encrypt/encrypt_screen.dart';
@@ -56,18 +57,22 @@ class _NotFound extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('That page does not exist.'),
-            const SizedBox(height: Space.lg),
-            TextButton(
-              onPressed: () => context.go(Routes.encrypt),
-              child: const Text('Go to Encrypt'),
-            ),
-          ],
+    return Title(
+      title: 'Not found · web-crypt',
+      color: context.colors.background,
+      child: Scaffold(
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('That page does not exist.'),
+              const SizedBox(height: Space.lg),
+              TextButton(
+                onPressed: () => context.go(Routes.encrypt),
+                child: const Text('Go to Encrypt'),
+              ),
+            ],
+          ),
         ),
       ),
     );

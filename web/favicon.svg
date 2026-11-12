@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+<style>.tile{fill:#1e5f74}.ink{fill:#ffffff;stroke:#ffffff}@media (prefers-color-scheme:dark){.tile{fill:#6fb3c6}.ink{fill:#10221e;stroke:#10221e}}</style>
+<rect class="tile" x="0" y="0" width="24" height="24"
+  rx="5.3"/>
+<g transform="translate(12 12) scale(0.72) translate(-12 -12)">
+<path class="ink" d="M12 2.6 19 5.3v5.6c0 4.6-2.9 8.6-7 10.5-4.1-1.9-7-5.9-7-10.5V5.3z" stroke-width="1.2" stroke-linejoin="round"/>
+<g class="tile"><circle cx="12" cy="10.3" r="2.15"/><path d="M11.25 11.4h1.5l.75 4.3h-3z"/></g>
+</g>
+</svg>

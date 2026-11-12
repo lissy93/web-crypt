@@ -207,6 +207,16 @@ Win32Window::MessageHandler(HWND hwnd,
       return 0;
     }
 
+    // the narrowest layout the app is designed for, plus the window frame
+    case WM_GETMINMAXINFO: {
+      HMONITOR monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+      double scale = FlutterDesktopGetDpiForMonitor(monitor) / 96.0;
+      auto info = reinterpret_cast<MINMAXINFO*>(lparam);
+      info->ptMinTrackSize.x = Scale(380, scale);
+      info->ptMinTrackSize.y = Scale(520, scale);
+      return 0;
+    }
+
     case WM_ACTIVATE:
       if (child_content_ != nullptr) {
         SetFocus(child_content_);

@@ -28,3 +28,21 @@ class ThemeChoiceNotifier extends Notifier<ThemeChoice> {
     await ref.read(storageServiceProvider).setTheme(choice);
   }
 }
+
+/// a file the OS opened the app with, held until Decrypt takes it
+final openedFileProvider = NotifierProvider<OpenedFile, PickedFile?>(
+  OpenedFile.new,
+);
+
+class OpenedFile extends Notifier<PickedFile?> {
+  @override
+  PickedFile? build() => null;
+
+  void open(PickedFile file) => state = file;
+
+  PickedFile? take() {
+    final file = state;
+    state = null;
+    return file;
+  }
+}

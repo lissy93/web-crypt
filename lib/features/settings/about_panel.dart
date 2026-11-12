@@ -4,6 +4,7 @@ import 'package:web_crypt/app/theme/app_theme.dart';
 import 'package:web_crypt/app/theme/spacing.dart';
 import 'package:web_crypt/core/widgets/app_button.dart';
 import 'package:web_crypt/core/widgets/app_card.dart';
+import 'package:web_crypt/core/widgets/app_logo.dart';
 
 /// kept in step with pubspec.yaml
 const appVersion = '1.0.0';
@@ -79,6 +80,10 @@ class AboutPanel extends StatelessWidget {
               context: context,
               applicationName: 'web-crypt',
               applicationVersion: appVersion,
+              applicationIcon: const Padding(
+                padding: EdgeInsets.all(Space.md),
+                child: AppLogo(size: 48),
+              ),
               applicationLegalese:
                   'MIT licensed. Fonts under the SIL Open '
                   'Font License.',

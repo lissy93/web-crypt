@@ -148,7 +148,8 @@ try {
     );
   }
 
-  if (titleSeen === 'web-crypt') {
+  // the first route is / which opens on Encrypt
+  if (titleSeen === 'Encrypt · web-crypt') {
     pass('page title is set');
   } else {
     fail(`unexpected title "${titleSeen}"`);

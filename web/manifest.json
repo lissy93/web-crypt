@@ -1,13 +1,17 @@
 {
+    "id": "./",
     "name": "web-crypt",
     "short_name": "web-crypt",
-    "start_url": ".",
-    "scope": ".",
+    "description": "Encrypt and decrypt messages and files with age and OpenPGP, all on your own device.",
+    "lang": "en",
+    "dir": "ltr",
+    "start_url": "./",
+    "scope": "./",
     "display": "standalone",
-    "background_color": "#fbfbfa",
-    "theme_color": "#1e5f74",
-    "description": "Encrypt and decrypt messages and files with age and OpenPGP. Runs entirely in your browser.",
     "orientation": "any",
+    "background_color": "#fbfbfa",
+    "theme_color": "#fbfbfa",
+    "categories": ["security", "utilities", "productivity"],
     "prefer_related_applications": false,
     "icons": [
         {
@@ -32,5 +36,50 @@
             "type": "image/png",
             "purpose": "maskable"
         }
-    ]
+    ],
+    "screenshots": [
+        {
+            "src": "screenshots/wide.webp",
+            "sizes": "1180x820",
+            "type": "image/webp",
+            "form_factor": "wide",
+            "label": "Encrypting a message with a passphrase"
+        },
+        {
+            "src": "screenshots/narrow.webp",
+            "sizes": "585x1266",
+            "type": "image/webp",
+            "form_factor": "narrow",
+            "label": "Encrypting a message on a phone"
+        }
+    ],
+    "shortcuts": [
+        {
+            "name": "Encrypt",
+            "description": "Encrypt a message or a file",
+            "url": "encrypt"
+        },
+        {
+            "name": "Decrypt",
+            "description": "Decrypt a message or a file",
+            "url": "decrypt"
+        },
+        {
+            "name": "Keys",
+            "description": "Manage your age and PGP keys",
+            "url": "keys"
+        }
+    ],
+    "file_handlers": [
+        {
+            "action": "decrypt",
+            "accept": {
+                "application/pgp-encrypted": [".gpg", ".pgp", ".asc"],
+                "application/x-age-encryption": [".age"]
+            }
+        }
+    ],
+    "launch_handler": {
+        "client_mode": "focus-existing"
+    }
 }

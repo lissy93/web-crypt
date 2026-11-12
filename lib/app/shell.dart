@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:web_crypt/app/router.dart';
 import 'package:web_crypt/app/theme/app_colors.dart';
 import 'package:web_crypt/app/theme/spacing.dart';
+import 'package:web_crypt/core/widgets/app_logo.dart';
 
 class _Destination {
   const _Destination(this.path, this.label, this.icon, this.selectedIcon);
@@ -37,13 +38,19 @@ class AppShell extends StatelessWidget {
 
   bool get _onSettings => location.startsWith(Routes.settings);
 
+  String get _page => _onSettings ? 'Settings' : _destinations[_index].label;
+
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final wide = constraints.maxWidth >= Layout.wideBreakpoint;
-        return wide ? _wide(context) : _narrow(context);
-      },
+    return Title(
+      title: '$_page · web-crypt',
+      color: context.colors.background,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final wide = constraints.maxWidth >= Layout.wideBreakpoint;
+          return wide ? _wide(context) : _narrow(context);
+        },
+      ),
     );
   }
 
@@ -190,35 +197,26 @@ class _Wordmark extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.colors;
     final theme = Theme.of(context);
     if (compact) {
       return Semantics(
         header: true,
         label: 'web-crypt',
-        child: ExcludeSemantics(
-          child: Container(
-            width: 34,
-            height: 34,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: colors.accent,
-              borderRadius: BorderRadius.circular(Radii.medium),
-            ),
-            child: Icon(
-              Icons.shield_outlined,
-              size: 18,
-              color: colors.accentText,
-            ),
-          ),
-        ),
+        child: const ExcludeSemantics(child: AppLogo()),
       );
     }
     return Semantics(
       header: true,
-      child: Text(
-        'web-crypt',
-        style: theme.textTheme.titleMedium?.copyWith(letterSpacing: -0.2),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const AppLogo(size: 26),
+          const SizedBox(width: Space.md),
+          Text(
+            'web-crypt',
+            style: theme.textTheme.titleMedium?.copyWith(letterSpacing: -0.2),
+          ),
+        ],
       ),
     );
   }
